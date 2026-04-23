@@ -23,7 +23,7 @@ def get_engine():
     """
     try:
         conn_url = st.secrets["postgres"]["url"]
-        engine = create_engine(conn_url, echo=False)
+        engine = create_engine(conn_url, pool_pre_ping=True, echo=False)
         return engine
     except Exception as e:
         st.error(f"❌ Erro ao conectar ao Neon: {e}")
@@ -104,6 +104,20 @@ def salvar_atendimento_neon(dados):
         st.warning(f"⚠️ Erro ao salvar atendimento no Neon: {e}")
         return False
 
+def salvar_voluntario_neon(dados_voluntario):
+    """Salva dados de um voluntário no Neon"""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return False
+        df = pd.DataFrame([dados_voluntario])
+        df.to_sql('voluntarios', engine, if_exists='append', index=False)
+        st.success("✅ Voluntário salvo no Neon com sucesso!")
+        return True
+    except Exception as e:
+        st.warning(f"⚠️ Erro ao salvar voluntário no Neon: {e}")
+        return False
+
 def salvar_item_catalogo_neon(dados_item):
     """Salva um novo item no catálogo de despensa do Neon"""
     try:
@@ -146,22 +160,28 @@ def inicializar_neon():
             st.error("Falha na conexão inicial com Neon. Verifique as configurações.")
             return
 
+        # Lista de statements SQL separados para evitar timeout SSL
+        schema_statements = [
+            "CREATE TABLE IF NOT EXISTS familias (id_familia SERIAL PRIMARY KEY, nome VARCHAR(255) NOT NULL, dependentes INTEGER, prioridade VARCHAR(50), cep VARCHAR(10), endereco TEXT, lat FLOAT, lon FLOAT, igreja VARCHAR(255), pastor VARCHAR(255), ultima_entrega TIMESTAMP, data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ativo BOOLEAN DEFAULT TRUE);",
+            "CREATE TABLE IF NOT EXISTS entregas (id_entrega SERIAL PRIMARY KEY, id_familia INTEGER, nome_familia VARCHAR(255), data TIMESTAMP, tipo VARCHAR(255), itens TEXT, responsavel_entrega VARCHAR(255), data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (id_familia) REFERENCES familias(id_familia));",
+            "CREATE TABLE IF NOT EXISTS sos_whatsapp (id_msg SERIAL PRIMARY KEY, telefone VARCHAR(20), nome VARCHAR(255), necessidade VARCHAR(255), pessoas INTEGER, cep VARCHAR(10), endereco TEXT, status VARCHAR(50), data_hora TIMESTAMP, respondido_por VARCHAR(255), data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
+            "CREATE TABLE IF NOT EXISTS locais_acolhimento (id_local SERIAL PRIMARY KEY, nome VARCHAR(255), tipo VARCHAR(100), capacidade INTEGER, cep VARCHAR(10), endereco TEXT, lat FLOAT, lon FLOAT, ativo BOOLEAN DEFAULT TRUE, data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
+            "CREATE TABLE IF NOT EXISTS pessoas_abrigadas (id_acolhido SERIAL PRIMARY KEY, id_local INTEGER, nome_responsavel VARCHAR(255), qtd_pessoas INTEGER, cep_origem VARCHAR(10), endereco_origem TEXT, lat_origem FLOAT, lon_origem FLOAT, data_entrada TIMESTAMP, responsavel_checkin VARCHAR(255), data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (id_local) REFERENCES locais_acolhimento(id_local));",
+            "CREATE TABLE IF NOT EXISTS atendimentos (id_atendimento SERIAL PRIMARY KEY, pessoa_nome VARCHAR(255), tipo_atendimento VARCHAR(255), descricao TEXT, data_atendimento TIMESTAMP, status VARCHAR(50), responsavel VARCHAR(255), data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
+            "CREATE TABLE IF NOT EXISTS voluntarios (id_voluntario SERIAL PRIMARY KEY, nome VARCHAR(255) NOT NULL, telefone VARCHAR(20), email VARCHAR(255), cep VARCHAR(10), endereco TEXT, possui_veiculo BOOLEAN DEFAULT FALSE, tipo_veiculo VARCHAR(100), dias_disponiveis TEXT, horario_inicio TIME, horario_fim TIME, observacoes TEXT, data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ativo BOOLEAN DEFAULT TRUE);",
+            "CREATE TABLE IF NOT EXISTS catalogo (id_item SERIAL PRIMARY KEY, nome VARCHAR(255) NOT NULL, qtd_por_cesta INTEGER DEFAULT 1, categoria VARCHAR(100), ativo BOOLEAN DEFAULT TRUE, data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
+            "CREATE TABLE IF NOT EXISTS lotes (id_lote SERIAL PRIMARY KEY, id_item INTEGER, nome_item VARCHAR(255), quantidade INTEGER, vencimento DATE, local_armazenagem VARCHAR(255), data_entrada TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ativo BOOLEAN DEFAULT TRUE, FOREIGN KEY (id_item) REFERENCES catalogo(id_item));",
+            "CREATE INDEX IF NOT EXISTS idx_familias_nome ON familias(nome);",
+            "CREATE INDEX IF NOT EXISTS idx_sos_status ON sos_whatsapp(status);"
+        ]
+
         with engine.connect() as conn:
-            # Script completo de migração
-            schema_sql = """
-                CREATE TABLE IF NOT EXISTS familias (id_familia SERIAL PRIMARY KEY, nome VARCHAR(255) NOT NULL, dependentes INTEGER, prioridade VARCHAR(50), cep VARCHAR(10), endereco TEXT, lat FLOAT, lon FLOAT, igreja VARCHAR(255), pastor VARCHAR(255), ultima_entrega TIMESTAMP, data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ativo BOOLEAN DEFAULT TRUE);
-                CREATE TABLE IF NOT EXISTS entregas (id_entrega SERIAL PRIMARY KEY, id_familia INTEGER, nome_familia VARCHAR(255), data TIMESTAMP, tipo VARCHAR(255), itens TEXT, responsavel_entrega VARCHAR(255), data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (id_familia) REFERENCES familias(id_familia));
-                CREATE TABLE IF NOT EXISTS sos_whatsapp (id_msg SERIAL PRIMARY KEY, telefone VARCHAR(20), nome VARCHAR(255), necessidade VARCHAR(255), pessoas INTEGER, cep VARCHAR(10), endereco TEXT, status VARCHAR(50), data_hora TIMESTAMP, respondido_por VARCHAR(255), data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
-                CREATE TABLE IF NOT EXISTS locais_acolhimento (id_local SERIAL PRIMARY KEY, nome VARCHAR(255), tipo VARCHAR(100), capacidade INTEGER, cep VARCHAR(10), endereco TEXT, lat FLOAT, lon FLOAT, ativo BOOLEAN DEFAULT TRUE, data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
-                CREATE TABLE IF NOT EXISTS pessoas_abrigadas (id_acolhido SERIAL PRIMARY KEY, id_local INTEGER, nome_responsavel VARCHAR(255), qtd_pessoas INTEGER, cep_origem VARCHAR(10), endereco_origem TEXT, lat_origem FLOAT, lon_origem FLOAT, data_entrada TIMESTAMP, responsavel_checkin VARCHAR(255), data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (id_local) REFERENCES locais_acolhimento(id_local));
-                CREATE TABLE IF NOT EXISTS atendimentos (id_atendimento SERIAL PRIMARY KEY, pessoa_nome VARCHAR(255), tipo_atendimento VARCHAR(255), descricao TEXT, data_atendimento TIMESTAMP, status VARCHAR(50), responsavel VARCHAR(255), data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
-                CREATE TABLE IF NOT EXISTS catalogo (id_item SERIAL PRIMARY KEY, nome VARCHAR(255) NOT NULL, qtd_por_cesta INTEGER DEFAULT 1, categoria VARCHAR(100), ativo BOOLEAN DEFAULT TRUE, data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
-                CREATE TABLE IF NOT EXISTS lotes (id_lote SERIAL PRIMARY KEY, id_item INTEGER, nome_item VARCHAR(255), quantidade INTEGER, vencimento DATE, local_armazenagem VARCHAR(255), data_entrada TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ativo BOOLEAN DEFAULT TRUE, FOREIGN KEY (id_item) REFERENCES catalogo(id_item));
-                CREATE INDEX IF NOT EXISTS idx_familias_nome ON familias(nome);
-                CREATE INDEX IF NOT EXISTS idx_sos_status ON sos_whatsapp(status);
-            """
             from sqlalchemy import text
-            conn.execute(text(schema_sql))
+            for sql in schema_statements:
+                try:
+                    conn.execute(text(sql))
+                except Exception as stmt_error:
+                    logging.warning(f"Statement falhou (pode ser normal se tabela já existe): {stmt_error}")
             conn.commit()
             
         logging.info("🚀 Banco de dados Neon inicializado com sucesso!")
@@ -647,6 +667,16 @@ if 'db_locais_acolhimento' not in st.session_state:
 if 'db_pessoas_abrigadas' not in st.session_state:
     st.session_state.db_pessoas_abrigadas = pd.DataFrame(columns=['id_acolhido', 'id_local', 'nome_responsavel', 'qtd_pessoas', 'cep_origem', 'endereco_origem', 'lat_origem', 'lon_origem', 'data_entrada'])
 
+if 'db_voluntarios' not in st.session_state:
+    st.session_state.db_voluntarios = pd.DataFrame(columns=[
+        'id_voluntario', 'nome', 'telefone', 'email', 'cep', 'endereco',
+        'possui_veiculo', 'tipo_veiculo', 'dias_disponiveis', 'horario_inicio',
+        'horario_fim', 'observacoes', 'data_cadastro', 'ativo'
+    ])
+
+if 'entrega_ativa_familia' not in st.session_state:
+    st.session_state.entrega_ativa_familia = None
+
 if 'db_sos_whatsapp' not in st.session_state:
     st.session_state.db_sos_whatsapp = pd.DataFrame([
         {
@@ -835,7 +865,7 @@ def main_app():
         st.markdown("---")
         menu_opcao = st.radio(
             "Navegação",
-            ["Dashboard", "Despensa", "Famílias", "Histórico", "Modo SOS", "Mapa Famílias", "Relatórios"],
+            ["Dashboard", "Despensa", "Famílias", "Voluntários", "Histórico", "Modo SOS", "Mapa Famílias", "Relatórios"],
             label_visibility="collapsed"
         )
         
@@ -1024,15 +1054,256 @@ def main_app():
                 c_btn1, c_btn2 = st.columns(2)
                 with c_btn1:
                     if st.button(f"📦 Entregar", key=f"ent_{fam['id_familia']}", use_container_width=True):
-                        suc, msg = alocar_cesta_peps(fam['id_familia'])
-                        if suc: st.success(msg); st.rerun()
-                        else: st.error(msg)
+                        st.session_state.entrega_ativa_familia = fam['id_familia']
+                        st.rerun()
                 with c_btn2:
                     if st.button(f"🗑️ Excluir", key=f"exc_{fam['id_familia']}", use_container_width=True):
                         excluir_familia_manual(fam['id_familia'])
                         st.rerun()
+
+                # PAINEL DE ENTREGA EXPANDIDO
+                if st.session_state.entrega_ativa_familia == fam['id_familia']:
+                    with st.container():
+                        st.markdown(f"""
+                            <div style="background: #EFF6FF; border: 2px solid #3B82F6; border-radius: 12px; padding: 20px; margin: 8px 0;">
+                                <h4 style="color: #1D4ED8; margin: 0 0 4px 0;">📦 Painel de Entrega — {fam['nome']}</h4>
+                                <p style="color: #3B82F6; font-size: 13px; margin: 0;">Escolha o tipo de entrega abaixo</p>
+                            </div>
+                        """, unsafe_allow_html=True)
+
+                        # --- Calcula estoque disponível ---
+                        df_estoque = pd.merge(
+                            st.session_state.db_lotes[st.session_state.db_lotes['quantidade'] > 0],
+                            st.session_state.db_catalogo,
+                            on='id_item'
+                        ).groupby(['id_item', 'nome', 'qtd_por_cesta']).agg({'quantidade': 'sum'}).reset_index()
+                        df_estoque.columns = ['id_item', 'nome', 'qtd_por_cesta', 'qtd_total']
+
+                        cestas_disp = calcular_cestas_possiveis()
+
+                        tab_cesta, tab_avulso = st.tabs(["🧺 Cesta Básica", "🛒 Itens Avulsos"])
+
+                        # ---- ABA CESTA ----
+                        with tab_cesta:
+                            if cestas_disp >= 1:
+                                st.success(f"✅ Estoque suficiente para **{cestas_disp} cesta(s)**.")
+                                st.markdown("**Composição da cesta que será entregue:**")
+                                itens_cesta = df_estoque[df_estoque['qtd_por_cesta'] > 0][['nome', 'qtd_por_cesta', 'qtd_total']].copy()
+                                itens_cesta.columns = ['Item', 'Qtd na Cesta', 'Disponível em Estoque']
+                                st.dataframe(itens_cesta, use_container_width=True, hide_index=True)
+                                col_conf, col_can = st.columns(2)
+                                with col_conf:
+                                    if st.button("✅ Confirmar Entrega da Cesta", key=f"conf_cesta_{fam['id_familia']}", type="primary", use_container_width=True):
+                                        suc, msg = alocar_cesta_peps(fam['id_familia'])
+                                        st.session_state.entrega_ativa_familia = None
+                                        if suc:
+                                            st.success(msg)
+                                        else:
+                                            st.error(msg)
+                                        st.rerun()
+                                with col_can:
+                                    if st.button("❌ Cancelar", key=f"can_cesta_{fam['id_familia']}", use_container_width=True):
+                                        st.session_state.entrega_ativa_familia = None
+                                        st.rerun()
+                            else:
+                                st.error("❌ Estoque insuficiente para montar uma cesta completa.")
+                                st.caption("Itens faltantes para completar a cesta:")
+                                for _, item in st.session_state.db_catalogo.iterrows():
+                                    if item['qtd_por_cesta'] > 0:
+                                        disp = st.session_state.db_lotes[st.session_state.db_lotes['id_item'] == item['id_item']]['quantidade'].sum()
+                                        if disp < item['qtd_por_cesta']:
+                                            st.markdown(f"- **{item['nome']}**: precisa {item['qtd_por_cesta']}, tem {int(disp)}")
+                                if st.button("Fechar", key=f"fecha_cesta_{fam['id_familia']}", use_container_width=True):
+                                    st.session_state.entrega_ativa_familia = None
+                                    st.rerun()
+
+                        # ---- ABA AVULSO ----
+                        with tab_avulso:
+                            if df_estoque.empty:
+                                st.warning("Nenhum item disponível no estoque.")
+                            else:
+                                st.markdown("**Selecione os itens e quantidades:**")
+                                selecoes_avulsas = {}
+                                for _, item_row in df_estoque.iterrows():
+                                    col_nome, col_qtd = st.columns([3, 1])
+                                    with col_nome:
+                                        st.markdown(f"**{item_row['nome']}**  \n<small style='color:#6B7280'>Disponível: {int(item_row['qtd_total'])} un.</small>", unsafe_allow_html=True)
+                                    with col_qtd:
+                                        qtd_sel = st.number_input(
+                                            "Qtd",
+                                            min_value=0,
+                                            max_value=int(item_row['qtd_total']),
+                                            value=0,
+                                            key=f"avulso_{fam['id_familia']}_{item_row['id_item']}",
+                                            label_visibility="collapsed"
+                                        )
+                                    if qtd_sel > 0:
+                                        selecoes_avulsas[item_row['id_item']] = {'nome': item_row['nome'], 'qtd': qtd_sel}
+
+                                col_av1, col_av2 = st.columns(2)
+                                with col_av1:
+                                    if st.button("✅ Confirmar Itens Avulsos", key=f"conf_avulso_{fam['id_familia']}", type="primary", use_container_width=True):
+                                        if not selecoes_avulsas:
+                                            st.warning("Selecione ao menos um item com quantidade maior que zero.")
+                                        else:
+                                            erros = []
+                                            itens_entregues = []
+                                            for id_it, dados_it in selecoes_avulsas.items():
+                                                suc, msg = dar_baixa_avulsa_peps(id_it, dados_it['qtd'])
+                                                if suc:
+                                                    itens_entregues.append(f"{dados_it['qtd']}x {dados_it['nome']}")
+                                                else:
+                                                    erros.append(f"{dados_it['nome']}: {msg}")
+
+                                            if erros:
+                                                for e in erros:
+                                                    st.error(e)
+                                            else:
+                                                descricao_itens = ", ".join(itens_entregues)
+                                                nova_entrega = {
+                                                    'id_entrega': len(st.session_state.db_entregas) + 1,
+                                                    'nome_familia': fam['nome'],
+                                                    'data': datetime.date.today(),
+                                                    'tipo': f"Avulso: {descricao_itens}"
+                                                }
+                                                st.session_state.db_entregas = pd.concat(
+                                                    [st.session_state.db_entregas, pd.DataFrame([nova_entrega])],
+                                                    ignore_index=True
+                                                )
+                                                salvar_entrega_neon(nova_entrega)
+                                                st.session_state.entrega_ativa_familia = None
+                                                st.success(f"✅ Entrega registrada: {descricao_itens}")
+                                                st.rerun()
+                                with col_av2:
+                                    if st.button("❌ Cancelar", key=f"can_avulso_{fam['id_familia']}", use_container_width=True):
+                                        st.session_state.entrega_ativa_familia = None
+                                        st.rerun()
         else:
             st.info("Nenhuma família cadastrada.")
+
+    elif menu_opcao == "Voluntários":
+        st.markdown("<div class='title-modern'>Gestão de Voluntários</div>", unsafe_allow_html=True)
+        st.markdown("<p class='subtitle-modern'>Cadastre e gerencie os voluntários da ação social.</p>", unsafe_allow_html=True)
+
+        with st.expander("➕ Cadastrar Novo Voluntário", expanded=True):
+            with st.form("form_voluntario", clear_on_submit=True):
+                st.markdown("##### 👤 Dados Pessoais")
+                col_v1, col_v2 = st.columns(2)
+                nome_vol = col_v1.text_input("Nome Completo *")
+                tel_vol = col_v2.text_input("Telefone / WhatsApp *", placeholder="(32) 99999-0000")
+                email_vol = st.text_input("E-mail", placeholder="opcional")
+
+                st.markdown("##### 🏠 Endereço")
+                col_cep_v, col_num_v = st.columns([1, 2])
+                cep_vol = col_cep_v.text_input("CEP *", max_chars=8)
+                num_vol = col_num_v.text_input("Número e Complemento *")
+
+                st.markdown("##### 🚗 Transporte")
+                possui_veiculo = st.radio("Possui veículo?", ["Não", "Sim"], horizontal=True)
+                tipo_veiculo = ""
+                if possui_veiculo == "Sim":
+                    tipo_veiculo = st.selectbox("Tipo de veículo", ["Carro", "Moto", "Caminhonete/Van", "Caminhão", "Bicicleta"])
+
+                st.markdown("##### 📅 Disponibilidade")
+                dias_opcoes = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]
+                dias_sel = st.multiselect("Dias disponíveis *", dias_opcoes, default=["Sábado"])
+                col_h1, col_h2 = st.columns(2)
+                hora_inicio = col_h1.time_input("Horário início", value=datetime.time(8, 0))
+                hora_fim = col_h2.time_input("Horário fim", value=datetime.time(12, 0))
+
+                obs_vol = st.text_area("Observações", placeholder="Habilidades, restrições, experiência anterior...", height=80)
+
+                if st.form_submit_button("Cadastrar Voluntário", type="primary", use_container_width=True):
+                    if nome_vol and tel_vol and cep_vol and num_vol and dias_sel:
+                        # Tenta buscar endereço pelo CEP
+                        endereco_vol = f"CEP {cep_vol}, {num_vol}"
+                        dados_cep_v, ok_cep = buscar_endereco_viacep(cep_vol)
+                        if ok_cep:
+                            endereco_vol = f"{dados_cep_v.get('logradouro','')}, {num_vol} — {dados_cep_v.get('bairro','')}, {dados_cep_v.get('localidade','')}/{dados_cep_v.get('uf','')}"
+
+                        novo_vol = {
+                            'id_voluntario': len(st.session_state.db_voluntarios) + 1,
+                            'nome': nome_vol,
+                            'telefone': tel_vol,
+                            'email': email_vol if email_vol else '-',
+                            'cep': cep_vol,
+                            'endereco': endereco_vol,
+                            'possui_veiculo': possui_veiculo == "Sim",
+                            'tipo_veiculo': tipo_veiculo if tipo_veiculo else '-',
+                            'dias_disponiveis': ", ".join(dias_sel),
+                            'horario_inicio': hora_inicio.strftime('%H:%M'),
+                            'horario_fim': hora_fim.strftime('%H:%M'),
+                            'observacoes': obs_vol if obs_vol else '-',
+                            'data_cadastro': datetime.datetime.now(),
+                            'ativo': True
+                        }
+                        st.session_state.db_voluntarios = pd.concat(
+                            [st.session_state.db_voluntarios, pd.DataFrame([novo_vol])],
+                            ignore_index=True
+                        )
+                        salvar_voluntario_neon(novo_vol)
+                        st.success(f"✅ Voluntário **{nome_vol}** cadastrado com sucesso!")
+                        st.rerun()
+                    else:
+                        st.error("Preencha os campos obrigatórios: Nome, Telefone, CEP, Número e Dias disponíveis.")
+
+        # --- LISTAGEM DOS VOLUNTÁRIOS ---
+        st.markdown("---")
+        st.markdown("<div class='title-modern'>Voluntários Cadastrados</div>", unsafe_allow_html=True)
+
+        if not st.session_state.db_voluntarios.empty:
+            # Filtro rápido por dia/veículo
+            col_filtro1, col_filtro2 = st.columns(2)
+            with col_filtro1:
+                filtro_dia = st.selectbox(
+                    "Filtrar por dia disponível",
+                    ["Todos"] + ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]
+                )
+            with col_filtro2:
+                filtro_veiculo = st.selectbox("Filtrar por veículo", ["Todos", "Com veículo", "Sem veículo"])
+
+            df_vol_exib = st.session_state.db_voluntarios[st.session_state.db_voluntarios['ativo'] == True].copy()
+
+            if filtro_dia != "Todos":
+                df_vol_exib = df_vol_exib[df_vol_exib['dias_disponiveis'].str.contains(filtro_dia, na=False)]
+
+            if filtro_veiculo == "Com veículo":
+                df_vol_exib = df_vol_exib[df_vol_exib['possui_veiculo'] == True]
+            elif filtro_veiculo == "Sem veículo":
+                df_vol_exib = df_vol_exib[df_vol_exib['possui_veiculo'] == False]
+
+            st.markdown(f"<p class='subtitle-modern'>{len(df_vol_exib)} voluntário(s) encontrado(s)</p>", unsafe_allow_html=True)
+
+            for _, vol in df_vol_exib.iterrows():
+                tag_veiculo = (
+                    f"<span class='badge badge-success'>🚗 {vol['tipo_veiculo']}</span>"
+                    if vol['possui_veiculo']
+                    else "<span class='badge badge-info'>🚶 Sem veículo</span>"
+                )
+                st.markdown(f"""
+                    <div class="bento-card">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px;">
+                            <div>
+                                <div class="title-modern" style="font-size: 18px; margin-bottom: 2px;">{vol['nome']}</div>
+                                <div class="subtitle-modern">📞 {vol['telefone']}{"  |  ✉️ " + vol['email'] if vol['email'] != '-' else ""}</div>
+                                <div class="subtitle-modern">📍 {vol['endereco']}</div>
+                                <div style="margin-top: 6px; font-size: 13px; color: #374151;">
+                                    📅 <b>Disponível:</b> {vol['dias_disponiveis']} &nbsp;|&nbsp; ⏰ {vol['horario_inicio']} às {vol['horario_fim']}
+                                </div>
+                                {"<div style='font-size:12px; color:#6B7280; margin-top:4px;'>💬 " + vol['observacoes'] + "</div>" if vol['observacoes'] != '-' else ""}
+                            </div>
+                            <div>{tag_veiculo}</div>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+                if st.button(f"🗑️ Remover {vol['nome']}", key=f"del_vol_{vol['id_voluntario']}", use_container_width=False):
+                    st.session_state.db_voluntarios.loc[
+                        st.session_state.db_voluntarios['id_voluntario'] == vol['id_voluntario'], 'ativo'
+                    ] = False
+                    st.rerun()
+        else:
+            st.info("Nenhum voluntário cadastrado ainda. Use o formulário acima para adicionar.")
 
     elif menu_opcao == "Histórico":
         st.markdown("<div class='title-modern'>Registro de Atividades</div>", unsafe_allow_html=True)

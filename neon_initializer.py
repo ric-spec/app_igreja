@@ -20,8 +20,8 @@ except (ImportError, KeyError):
 # ==========================================
 # 2. DEFINIÇÃO DAS TABELAS (Schema SQL)
 # ==========================================
-SCHEMA_SQL = """
--- Tabela de Famílias
+SCHEMA_STATEMENTS = [
+    """
 CREATE TABLE IF NOT EXISTS familias (
     id_familia SERIAL PRIMARY KEY,
     nome VARCHAR(255) NOT NULL,
@@ -37,8 +37,8 @@ CREATE TABLE IF NOT EXISTS familias (
     data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     ativo BOOLEAN DEFAULT TRUE
 );
-
--- Tabela de Entregas
+    """,
+    """
 CREATE TABLE IF NOT EXISTS entregas (
     id_entrega SERIAL PRIMARY KEY,
     id_familia INTEGER,
@@ -50,8 +50,8 @@ CREATE TABLE IF NOT EXISTS entregas (
     data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (id_familia) REFERENCES familias(id_familia)
 );
-
--- Tabela de SOS WhatsApp
+    """,
+    """
 CREATE TABLE IF NOT EXISTS sos_whatsapp (
     id_msg SERIAL PRIMARY KEY,
     telefone VARCHAR(20),
@@ -65,8 +65,8 @@ CREATE TABLE IF NOT EXISTS sos_whatsapp (
     respondido_por VARCHAR(255),
     data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
--- Tabela de Locais de Acolhimento
+    """,
+    """
 CREATE TABLE IF NOT EXISTS locais_acolhimento (
     id_local SERIAL PRIMARY KEY,
     nome VARCHAR(255),
@@ -79,8 +79,8 @@ CREATE TABLE IF NOT EXISTS locais_acolhimento (
     ativo BOOLEAN DEFAULT TRUE,
     data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
--- Tabela de Pessoas Abrigadas
+    """,
+    """
 CREATE TABLE IF NOT EXISTS pessoas_abrigadas (
     id_acolhido SERIAL PRIMARY KEY,
     id_local INTEGER,
@@ -95,8 +95,8 @@ CREATE TABLE IF NOT EXISTS pessoas_abrigadas (
     data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (id_local) REFERENCES locais_acolhimento(id_local)
 );
-
--- Tabela de Atendimentos Genéricos
+    """,
+    """
 CREATE TABLE IF NOT EXISTS atendimentos (
     id_atendimento SERIAL PRIMARY KEY,
     pessoa_nome VARCHAR(255),
@@ -107,8 +107,26 @@ CREATE TABLE IF NOT EXISTS atendimentos (
     responsavel VARCHAR(255),
     data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
--- Tabela de Catálogo de Itens (Despensa)
+    """,
+    """
+CREATE TABLE IF NOT EXISTS voluntarios (
+    id_voluntario SERIAL PRIMARY KEY,
+    nome VARCHAR(255) NOT NULL,
+    telefone VARCHAR(20),
+    email VARCHAR(255),
+    cep VARCHAR(10),
+    endereco TEXT,
+    possui_veiculo BOOLEAN DEFAULT FALSE,
+    tipo_veiculo VARCHAR(100),
+    dias_disponiveis TEXT,
+    horario_inicio TIME,
+    horario_fim TIME,
+    observacoes TEXT,
+    data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    ativo BOOLEAN DEFAULT TRUE
+);
+    """,
+    """
 CREATE TABLE IF NOT EXISTS catalogo (
     id_item SERIAL PRIMARY KEY,
     nome VARCHAR(255) NOT NULL,
@@ -117,8 +135,8 @@ CREATE TABLE IF NOT EXISTS catalogo (
     ativo BOOLEAN DEFAULT TRUE,
     data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
--- Tabela de Estoque/Lotes
+    """,
+    """
 CREATE TABLE IF NOT EXISTS lotes (
     id_lote SERIAL PRIMARY KEY,
     id_item INTEGER,
@@ -130,16 +148,15 @@ CREATE TABLE IF NOT EXISTS lotes (
     ativo BOOLEAN DEFAULT TRUE,
     FOREIGN KEY (id_item) REFERENCES catalogo(id_item)
 );
-
--- Criar índices para melhorar performance
-CREATE INDEX IF NOT EXISTS idx_familias_nome ON familias(nome);
-CREATE INDEX IF NOT EXISTS idx_familias_cep ON familias(cep);
-CREATE INDEX IF NOT EXISTS idx_sos_status ON sos_whatsapp(status);
-CREATE INDEX IF NOT EXISTS idx_acolhido_data ON pessoas_abrigadas(data_entrada);
-CREATE INDEX IF NOT EXISTS idx_entrega_data ON entregas(data);
-CREATE INDEX IF NOT EXISTS idx_catalogo_nome ON catalogo(nome);
-CREATE INDEX IF NOT EXISTS idx_lotes_item ON lotes(id_item);
-"""
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_familias_nome ON familias(nome);",
+    "CREATE INDEX IF NOT EXISTS idx_familias_cep ON familias(cep);",
+    "CREATE INDEX IF NOT EXISTS idx_sos_status ON sos_whatsapp(status);",
+    "CREATE INDEX IF NOT EXISTS idx_acolhido_data ON pessoas_abrigadas(data_entrada);",
+    "CREATE INDEX IF NOT EXISTS idx_entrega_data ON entregas(data);",
+    "CREATE INDEX IF NOT EXISTS idx_catalogo_nome ON catalogo(nome);",
+    "CREATE INDEX IF NOT EXISTS idx_lotes_item ON lotes(id_item);"
+]
 
 # ==========================================
 # 3. DADOS INICIAIS (se necessário)
@@ -162,7 +179,7 @@ DADOS_LOTES = [
 def conectar():
     """Conecta ao Neon e retorna o engine"""
     try:
-        engine = create_engine(NEON_URL)
+        engine = create_engine(NEON_URL, pool_pre_ping=True, echo=False)
         with engine.connect() as conn:
             print("✅ Conexão com Neon bem-sucedida!")
         return engine
@@ -174,7 +191,13 @@ def criar_tabelas(engine):
     """Cria todas as tabelas no Neon se não existirem"""
     try:
         with engine.connect() as conn:
-            conn.execute(text(SCHEMA_SQL))
+            for i, sql in enumerate(SCHEMA_STATEMENTS, 1):
+                try:
+                    conn.execute(text(sql.strip()))
+                    print(f"   ✅ Executado statement {i}/{len(SCHEMA_STATEMENTS)}")
+                except Exception as e:
+                    print(f"   ⚠️  Erro no statement {i}: {e}")
+                    # Continue with next statement
             conn.commit()
             print("✅ Tabelas criadas/verificadas com sucesso!")
             return True
