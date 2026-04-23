@@ -273,8 +273,8 @@ st.markdown("""
     
     .stApp { background-color: var(--bg-app); }
 
-    /* CARDS - Grande e Visível */
-    .card {
+    /* CSS COMPATÍVEL COM CLASSES ANTIGAS E NOVAS */
+    .bento-card, .card {
         background: var(--bg-card);
         padding: 24px;
         border-radius: 12px;
@@ -283,18 +283,21 @@ st.markdown("""
         margin-bottom: 16px;
         transition: all 0.3s ease;
     }
-    .card:hover {
+    .bento-card:hover, .card:hover {
         box-shadow: 0 8px 16px rgba(0,0,0,0.15);
         transform: translateY(-2px);
     }
 
     /* TÍTULOS - Grandes e Claros */
-    h1, h2, h3 { 
+    .title-modern, h1, h2, h3 { 
         color: var(--text-main);
         font-weight: 700;
         margin: 20px 0 12px 0;
         line-height: 1.3;
     }
+    .title-modern { font-size: 24px; margin-top: 0; }
+    .subtitle-modern { color: var(--text-light); font-weight: 500; font-size: 14px; margin-bottom: 12px; }
+    
     h1 { font-size: 32px; }
     h2 { font-size: 24px; }
     h3 { font-size: 18px; }
