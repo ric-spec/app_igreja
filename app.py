@@ -7,6 +7,175 @@ from streamlit_geolocation import streamlit_geolocation
 import time
 import folium
 from streamlit_folium import st_folium
+from sqlalchemy import create_engine
+import logging
+
+# Configure logging para debug
+logging.basicConfig(level=logging.INFO)
+
+# ==========================================
+# CONEXÃO COM NEON
+# ==========================================
+@st.cache_resource
+def get_engine():
+    """
+    Conecta ao banco Neon usando a URL armazenada nos Secrets.
+    """
+    try:
+        conn_url = st.secrets["postgres"]["url"]
+        engine = create_engine(conn_url, echo=False)
+        return engine
+    except Exception as e:
+        st.error(f"❌ Erro ao conectar ao Neon: {e}")
+        return None
+
+def salvar_familia_neon(dados_familia):
+    """Salva dados de uma família no Neon"""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return False
+        
+        df = pd.DataFrame([dados_familia])
+        df.to_sql('familias', engine, if_exists='append', index=False)
+        st.success("✅ Família salva no Neon com sucesso!")
+        return True
+    except Exception as e:
+        st.warning(f"⚠️ Erro ao salvar família no Neon: {e}")
+        return False
+
+def salvar_entrega_neon(dados_entrega):
+    """Salva dados de uma entrega no Neon"""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return False
+        
+        df = pd.DataFrame([dados_entrega])
+        df.to_sql('entregas', engine, if_exists='append', index=False)
+        st.success("✅ Entrega registrada no Neon com sucesso!")
+        return True
+    except Exception as e:
+        st.warning(f"⚠️ Erro ao salvar entrega no Neon: {e}")
+        return False
+
+def salvar_sos_neon(dados_sos):
+    """Salva dados de SOS/WhatsApp no Neon"""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return False
+        
+        df = pd.DataFrame([dados_sos])
+        df.to_sql('sos_whatsapp', engine, if_exists='append', index=False)
+        st.success("✅ SOS registrado no Neon com sucesso!")
+        return True
+    except Exception as e:
+        st.warning(f"⚠️ Erro ao salvar SOS no Neon: {e}")
+        return False
+
+def salvar_acolhimento_neon(dados_acolhimento):
+    """Salva dados de acolhimento no Neon"""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return False
+        
+        df = pd.DataFrame([dados_acolhimento])
+        df.to_sql('pessoas_abrigadas', engine, if_exists='append', index=False)
+        st.success("✅ Acolhimento registrado no Neon com sucesso!")
+        return True
+    except Exception as e:
+        st.warning(f"⚠️ Erro ao salvar acolhimento no Neon: {e}")
+        return False
+
+def salvar_atendimento_neon(dados):
+    """Salva dados de atendimento no Neon (genérico)"""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return False
+        
+        df = pd.DataFrame([dados])
+        df.to_sql('atendimentos', engine, if_exists='append', index=False)
+        st.success("✅ Dados enviados ao Neon com sucesso!")
+        return True
+    except Exception as e:
+        st.warning(f"⚠️ Erro ao salvar atendimento no Neon: {e}")
+        return False
+
+def salvar_item_catalogo_neon(dados_item):
+    """Salva um novo item no catálogo de despensa do Neon"""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return False
+        
+        df = pd.DataFrame([dados_item])
+        df.to_sql('catalogo', engine, if_exists='append', index=False)
+        st.success("✅ Item adicionado ao catálogo de despensa!")
+        return True
+    except Exception as e:
+        st.warning(f"⚠️ Erro ao salvar item: {e}")
+        return False
+
+def salvar_lote_neon(dados_lote):
+    """Salva um novo lote de estoque no Neon"""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return False
+        
+        df = pd.DataFrame([dados_lote])
+        df.to_sql('lotes', engine, if_exists='append', index=False)
+        st.success("✅ Lote de estoque registrado com sucesso!")
+        return True
+    except Exception as e:
+        st.warning(f"⚠️ Erro ao salvar lote: {e}")
+        return False
+
+# ==========================================
+# FUNÇÃO DE INICIALIZAÇÃO DO NEON
+# ==========================================
+@st.cache_resource
+def inicializar_neon():
+    """Conecta e cria todas as tabelas no Neon se não existirem."""
+    try:
+        engine = get_engine()
+        if engine is None:
+            st.error("Falha na conexão inicial com Neon. Verifique as configurações.")
+            return
+
+        with engine.connect() as conn:
+            # Script completo de migração
+            schema_sql = """
+                CREATE TABLE IF NOT EXISTS familias (id_familia SERIAL PRIMARY KEY, nome VARCHAR(255) NOT NULL, dependentes INTEGER, prioridade VARCHAR(50), cep VARCHAR(10), endereco TEXT, lat FLOAT, lon FLOAT, igreja VARCHAR(255), pastor VARCHAR(255), ultima_entrega TIMESTAMP, data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ativo BOOLEAN DEFAULT TRUE);
+                CREATE TABLE IF NOT EXISTS entregas (id_entrega SERIAL PRIMARY KEY, id_familia INTEGER, nome_familia VARCHAR(255), data TIMESTAMP, tipo VARCHAR(255), itens TEXT, responsavel_entrega VARCHAR(255), data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (id_familia) REFERENCES familias(id_familia));
+                CREATE TABLE IF NOT EXISTS sos_whatsapp (id_msg SERIAL PRIMARY KEY, telefone VARCHAR(20), nome VARCHAR(255), necessidade VARCHAR(255), pessoas INTEGER, cep VARCHAR(10), endereco TEXT, status VARCHAR(50), data_hora TIMESTAMP, respondido_por VARCHAR(255), data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+                CREATE TABLE IF NOT EXISTS locais_acolhimento (id_local SERIAL PRIMARY KEY, nome VARCHAR(255), tipo VARCHAR(100), capacidade INTEGER, cep VARCHAR(10), endereco TEXT, lat FLOAT, lon FLOAT, ativo BOOLEAN DEFAULT TRUE, data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+                CREATE TABLE IF NOT EXISTS pessoas_abrigadas (id_acolhido SERIAL PRIMARY KEY, id_local INTEGER, nome_responsavel VARCHAR(255), qtd_pessoas INTEGER, cep_origem VARCHAR(10), endereco_origem TEXT, lat_origem FLOAT, lon_origem FLOAT, data_entrada TIMESTAMP, responsavel_checkin VARCHAR(255), data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (id_local) REFERENCES locais_acolhimento(id_local));
+                CREATE TABLE IF NOT EXISTS atendimentos (id_atendimento SERIAL PRIMARY KEY, pessoa_nome VARCHAR(255), tipo_atendimento VARCHAR(255), descricao TEXT, data_atendimento TIMESTAMP, status VARCHAR(50), responsavel VARCHAR(255), data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+                CREATE TABLE IF NOT EXISTS catalogo (id_item SERIAL PRIMARY KEY, nome VARCHAR(255) NOT NULL, qtd_por_cesta INTEGER DEFAULT 1, categoria VARCHAR(100), ativo BOOLEAN DEFAULT TRUE, data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+                CREATE TABLE IF NOT EXISTS lotes (id_lote SERIAL PRIMARY KEY, id_item INTEGER, nome_item VARCHAR(255), quantidade INTEGER, vencimento DATE, local_armazenagem VARCHAR(255), data_entrada TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ativo BOOLEAN DEFAULT TRUE, FOREIGN KEY (id_item) REFERENCES catalogo(id_item));
+                CREATE INDEX IF NOT EXISTS idx_familias_nome ON familias(nome);
+                CREATE INDEX IF NOT EXISTS idx_sos_status ON sos_whatsapp(status);
+            """
+            from sqlalchemy import text
+            conn.execute(text(schema_sql))
+            conn.commit()
+            
+        logging.info("🚀 Banco de dados Neon inicializado com sucesso!")
+        
+    except Exception as e:
+        st.error(f"❌ Erro crítico ao inicializar o banco de dados: {e}")
+        logging.error(f"Erro na inicialização do Neon: {e}")
+
+# Chame a função de inicialização uma vez ao iniciar o app
+inicializar_neon()
+
+# ==========================================
+# 1. RENDERIZAÇÃO DE MAPAS
+# ==========================================
 
 def renderizar_mapa_folium(df_mapa):
     """
@@ -72,104 +241,217 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- CSS CONTEMPORÂNEO & UI ---
+# --- CSS MODERNO E ACESSÍVEL PARA PESSOAS SIMPLES ---
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
     
     :root {
-        --primary: #4F46E5;
-        --primary-hover: #4338ca;
-        --bg-app: #F8FAFC;
-        --bg-card: #FFFFFF;
-        --text-main: #0F172A; 
-        --text-muted: #64748B;
-        --border-color: #E2E8F0;
+        --primary: #2563eb;
+        --primary-light: #3b82f6;
+        --primary-dark: #1d4ed8;
+        --success: #10b981;
+        --warning: #f59e0b;
+        --danger: #ef4444;
+        --bg-app: #f0f4f8;
+        --bg-card: #ffffff;
+        --text-main: #1f2937;
+        --text-light: #6b7280;
+        --border: #e5e7eb;
+        --shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
 
-    /* Dark Mode Overrides */
-    @media (prefers-color-scheme: dark) {
-        :root {
-            --bg-app: #0F172A; 
-            --bg-card: #1E293B; 
-            --text-main: #F8FAFC; 
-            --text-muted: #94A3B8; 
-            --border-color: #334155;
-        }
-    }
-
-    /* Global Styles */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
     html, body, [class*="css"] { 
-        font-family: 'Plus Jakarta Sans', sans-serif; 
+        font-family: 'Inter', sans-serif;
         background-color: var(--bg-app);
         color: var(--text-main);
+        font-size: 16px;
+        line-height: 1.6;
     }
     
     .stApp { background-color: var(--bg-app); }
 
-    /* Bento Card Design */
-    .bento-card {
-        background: var(--bg-card); 
-        padding: 24px; 
-        border-radius: 20px;
-        border: 1px solid var(--border-color);
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-        margin-bottom: 20px; 
-        transition: all 0.2s ease-in-out;
+    /* CARDS - Grande e Visível */
+    .card {
+        background: var(--bg-card);
+        padding: 24px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        box-shadow: var(--shadow);
+        margin-bottom: 16px;
+        transition: all 0.3s ease;
     }
-    .bento-card:hover { 
-        transform: translateY(-2px); 
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+    .card:hover {
+        box-shadow: 0 8px 16px rgba(0,0,0,0.15);
+        transform: translateY(-2px);
     }
 
-    /* Typography */
-    .title-modern { font-weight: 800; color: var(--text-main); letter-spacing: -0.5px; font-size: 22px; margin-bottom: 8px; }
-    .subtitle-modern { color: var(--text-muted); font-weight: 500; font-size: 14px; line-height: 1.5; }
-    
-    .text-gradient {
-        background: linear-gradient(135deg, #4F46E5 0%, #9333EA 100%);
-        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-        font-weight: 800; font-size: 42px;
+    /* TÍTULOS - Grandes e Claros */
+    h1, h2, h3 { 
+        color: var(--text-main);
+        font-weight: 700;
+        margin: 20px 0 12px 0;
+        line-height: 1.3;
     }
-    
-    /* Tags */
-    .pill-tag-alert { background: #FEF2F2; color: #DC2626; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; border: 1px solid #FECACA; display: inline-block;}
-    .pill-tag-ok { background: #ECFCCB; color: #4D7C0F; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; border: 1px solid #D9F99D; display: inline-block;}
-    .pill-tag-neutral { background: #F1F5F9; color: #475569; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; display: inline-block; border: 1px solid #E2E8F0;}
-    
-    /* Login Screen Specifics */
-    .login-container {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
+    h1 { font-size: 32px; }
+    h2 { font-size: 24px; }
+    h3 { font-size: 18px; }
+
+    /* BADGES/TAGS - Coloridos e Grandes */
+    .badge {
+        display: inline-block;
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 13px;
+        margin: 4px;
     }
+    .badge-success { background: #d1fae5; color: #065f46; }
+    .badge-warning { background: #fef3c7; color: #78350f; }
+    .badge-danger { background: #fee2e2; color: #7f1d1d; }
+    .badge-info { background: #dbeafe; color: #0c2340; }
+
+    /* BOTÕES - Maiores e Mais Visíveis */
+    .stButton > button {
+        font-size: 16px !important;
+        padding: 12px 24px !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        border: none !important;
+        transition: all 0.2s !important;
+        height: auto !important;
+        min-height: 44px !important;
+    }
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    /* TEXTOS DE ENTRADA - Maiores */
+    .stTextInput > div > div > input,
+    .stNumberInput > div > div > input,
+    .stSelectbox > div > div > select,
+    .stTextArea > div > div > textarea {
+        font-size: 15px !important;
+        padding: 12px !important;
+        border-radius: 8px !important;
+        min-height: 40px !important;
+    }
+
+    /* MENU/TABS NA SIDEBAR COM CORES */
+    .menu-item {
+        display: block;
+        padding: 12px 16px;
+        margin: 8px 0;
+        background: var(--bg-card);
+        border-radius: 8px;
+        border-left: 4px solid transparent;
+        cursor: pointer;
+        font-weight: 500;
+        font-size: 15px;
+        transition: all 0.2s;
+        border: 1px solid var(--border);
+    }
+    .menu-item:hover {
+        background: #f3f4f6;
+        border-left-color: var(--primary);
+    }
+    .menu-item.active {
+        background: var(--primary);
+        color: white;
+        border: 1px solid var(--primary);
+    }
+
+    /* LOGIN - Mais Acessível */
     .login-box {
-        background: rgba(255, 255, 255, 0.75);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        border: 1px solid rgba(255, 255, 255, 0.3);
+        background: white;
         padding: 40px;
-        border-radius: 24px;
-        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
-        text-align: center;
-        max-width: 400px;
-        width: 100%;
+        border-radius: 12px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        max-width: 420px;
         margin: auto;
     }
-
-    /* Sidebar Clean-up */
-    [data-testid="stSidebar"] {
-        background-color: var(--bg-card);
-        border-right: 1px solid var(--border-color);
+    .login-box h1 {
+        font-size: 28px;
+        margin-bottom: 8px;
+        color: var(--primary);
     }
-    
-    /* Buttons */
-    .stButton > button {
-        border-radius: 12px;
+    .login-box p {
+        color: var(--text-light);
+        margin-bottom: 24px;
+        font-size: 15px;
+    }
+
+    /* TABELAS - Legíveis */
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    th {
+        background: var(--primary);
+        color: white;
+        padding: 12px;
+        text-align: left;
         font-weight: 600;
-        border: none;
-        transition: all 0.2s;
+    }
+    td {
+        padding: 12px;
+        border-bottom: 1px solid var(--border);
+    }
+    tr:hover { background: #f9fafb; }
+
+    /* FORMULÁRIOS - Bem Espaçados */
+    form {
+        max-width: 600px;
+    }
+    label {
+        font-weight: 600;
+        margin-bottom: 6px;
+        display: block;
+        font-size: 15px;
+    }
+
+    /* SIDEBAR - Limpo */
+    [data-testid="stSidebar"] {
+        background-color: var(--bg-app);
+        border-right: 1px solid var(--border);
+        padding: 20px 16px;
+    }
+
+    /* ALERTAS - Grandes e Claros */
+    .stAlert { 
+        padding: 16px !important;
+        border-radius: 8px !important;
+        font-size: 15px !important;
+        margin: 12px 0 !important;
+    }
+
+    /* MÉTRICA/KPI - Destaca Informações */
+    .metric-box {
+        background: var(--primary);
+        color: white;
+        padding: 24px;
+        border-radius: 8px;
+        text-align: center;
+        margin: 12px 0;
+    }
+    .metric-box .number {
+        font-size: 36px;
+        font-weight: 700;
+    }
+    .metric-box .label {
+        font-size: 14px;
+        opacity: 0.9;
+        margin-top: 8px;
+    }
+
+    /* RESPONSIVIDADE */
+    @media (max-width: 768px) {
+        h1 { font-size: 24px; }
+        h2 { font-size: 20px; }
+        .stButton > button { min-height: 50px !important; }
     }
     
     </style>
@@ -255,18 +537,89 @@ def geocodificar_endereco(endereco_busca):
 # ==========================================
 if 'db_catalogo' not in st.session_state:
     st.session_state.db_catalogo = pd.DataFrame([
+        # Grãos e Cereais
         {'id_item': 1, 'nome': 'Arroz (5kg)', 'qtd_por_cesta': 1},
         {'id_item': 2, 'nome': 'Feijão (1kg)', 'qtd_por_cesta': 2},
-        {'id_item': 3, 'nome': 'Óleo de Soja', 'qtd_por_cesta': 1},
-        {'id_item': 4, 'nome': 'Leite em Pó', 'qtd_por_cesta': 1}
+        {'id_item': 3, 'nome': 'Macarrão (500g)', 'qtd_por_cesta': 2},
+        {'id_item': 4, 'nome': 'Farinha de Trigo (1kg)', 'qtd_por_cesta': 1},
+        
+        # Óleos e Condimentos
+        {'id_item': 5, 'nome': 'Óleo de Soja (900ml)', 'qtd_por_cesta': 1},
+        {'id_item': 6, 'nome': 'Sal (1kg)', 'qtd_por_cesta': 1},
+        {'id_item': 7, 'nome': 'Açúcar (1kg)', 'qtd_por_cesta': 1},
+        
+        # Laticínios e Proteínas
+        {'id_item': 8, 'nome': 'Leite em Pó (400g)', 'qtd_por_cesta': 1},
+        {'id_item': 9, 'nome': 'Ovo (dúzia)', 'qtd_por_cesta': 1},
+        {'id_item': 10, 'nome': 'Sardinha em Lata (120g)', 'qtd_por_cesta': 1},
+        
+        # Frutas e Vegetais
+        {'id_item': 11, 'nome': 'Batata-doce (kg)', 'qtd_por_cesta': 1},
+        {'id_item': 12, 'nome': 'Cebola (kg)', 'qtd_por_cesta': 1},
+        
+        # Bebidas
+        {'id_item': 13, 'nome': 'Café (500g)', 'qtd_por_cesta': 1},
+        {'id_item': 14, 'nome': 'Achocolatado (400g)', 'qtd_por_cesta': 1},
+        
+        # Produtos de Higiene/Limpeza
+        {'id_item': 15, 'nome': 'Sabão em Pó (500g)', 'qtd_por_cesta': 1},
+        {'id_item': 16, 'nome': 'Desinfetante (1L)', 'qtd_por_cesta': 1},
+        {'id_item': 17, 'nome': 'Sabonete (unidade)', 'qtd_por_cesta': 1},
     ])
 
 if 'db_lotes' not in st.session_state:
     st.session_state.db_lotes = pd.DataFrame([
-        {'id_lote': 1, 'id_item': 1, 'quantidade': 10, 'vencimento': datetime.date(2026, 12, 1)},
-        {'id_lote': 2, 'id_item': 2, 'quantidade': 15, 'vencimento': datetime.date(2026, 8, 15)},
-        {'id_lote': 3, 'id_item': 3, 'quantidade': 5, 'vencimento': datetime.date(2026, 3, 20)}, 
-        {'id_lote': 4, 'id_item': 4, 'quantidade': 8, 'vencimento': datetime.date(2026, 10, 10)}
+        # Grãos - Arroz
+        {'id_lote': 1, 'id_item': 1, 'quantidade': 25, 'vencimento': datetime.date(2026, 12, 1)},
+        
+        # Grãos - Feijão
+        {'id_lote': 2, 'id_item': 2, 'quantidade': 30, 'vencimento': datetime.date(2026, 8, 15)},
+        {'id_lote': 3, 'id_item': 2, 'quantidade': 15, 'vencimento': datetime.date(2026, 9, 20)},
+        
+        # Macarrão
+        {'id_lote': 4, 'id_item': 3, 'quantidade': 40, 'vencimento': datetime.date(2026, 11, 15)},
+        
+        # Farinha
+        {'id_lote': 5, 'id_item': 4, 'quantidade': 20, 'vencimento': datetime.date(2026, 10, 10)},
+        
+        # Óleo
+        {'id_lote': 6, 'id_item': 5, 'quantidade': 35, 'vencimento': datetime.date(2026, 3, 20)},
+        
+        # Sal
+        {'id_lote': 7, 'id_item': 6, 'quantidade': 50, 'vencimento': datetime.date(2027, 6, 15)},
+        
+        # Açúcar
+        {'id_lote': 8, 'id_item': 7, 'quantidade': 30, 'vencimento': datetime.date(2026, 7, 30)},
+        
+        # Leite em Pó
+        {'id_lote': 9, 'id_item': 8, 'quantidade': 18, 'vencimento': datetime.date(2026, 5, 15)},
+        
+        # Ovos
+        {'id_lote': 10, 'id_item': 9, 'quantidade': 12, 'vencimento': datetime.date(2026, 4, 30)},
+        
+        # Sardinha
+        {'id_lote': 11, 'id_item': 10, 'quantidade': 25, 'vencimento': datetime.date(2026, 9, 10)},
+        
+        # Batata-doce
+        {'id_lote': 12, 'id_item': 11, 'quantidade': 40, 'vencimento': datetime.date(2026, 5, 20)},
+        
+        # Cebola
+        {'id_lote': 13, 'id_item': 12, 'quantidade': 35, 'vencimento': datetime.date(2026, 6, 10)},
+        
+        # Café
+        {'id_lote': 14, 'id_item': 13, 'quantidade': 20, 'vencimento': datetime.date(2026, 12, 15)},
+        
+        # Achocolatado
+        {'id_lote': 15, 'id_item': 14, 'quantidade': 15, 'vencimento': datetime.date(2026, 8, 20)},
+        
+        # Sabão em Pó
+        {'id_lote': 16, 'id_item': 15, 'quantidade': 22, 'vencimento': datetime.date(2026, 10, 25)},
+        
+        # Desinfetante
+        {'id_lote': 17, 'id_item': 16, 'quantidade': 18, 'vencimento': datetime.date(2026, 9, 5)},
+        
+        # Sabonete
+        {'id_lote': 18, 'id_item': 17, 'quantidade': 48, 'vencimento': datetime.date(2026, 11, 30)},
     ])
 
 if 'db_familias' not in st.session_state:
@@ -339,6 +692,9 @@ def alocar_cesta_peps(id_familia):
             
     nova_entrega = {'id_entrega': len(st.session_state.db_entregas)+1, 'nome_familia': nome_familia, 'data': datetime.date.today(), 'tipo': 'Cesta Padrão'}
     st.session_state.db_entregas = pd.concat([st.session_state.db_entregas, pd.DataFrame([nova_entrega])], ignore_index=True)
+    
+    # Salva também no Neon
+    salvar_entrega_neon(nova_entrega)
     
     excluir_familia_manual(id_familia)
     return True, f"Cesta entregue para {nome_familia}. Família removida da fila de espera!"
@@ -626,6 +982,9 @@ def main_app():
                         }
                         st.session_state.db_familias = pd.concat([st.session_state.db_familias, pd.DataFrame([nova_fam])], ignore_index=True)
                         
+                        # Salva também no Neon
+                        salvar_familia_neon(nova_fam)
+                        
                         # 4. Feedback ao Usuário
                         if lat is not None:
                             st.success(f"✅ Cadastro realizado e localizado no mapa!")
@@ -743,6 +1102,10 @@ def main_app():
                     if nome_sos:
                         novo = {'id_acolhido': len(st.session_state.db_pessoas_abrigadas)+1, 'id_local': local_sel, 'nome_responsavel': nome_sos, 'qtd_pessoas': qtd_sos, 'cep_origem': cep_sos, 'endereco_origem': '-', 'lat_origem': None, 'lon_origem': None, 'data_entrada': datetime.datetime.now()}
                         st.session_state.db_pessoas_abrigadas = pd.concat([st.session_state.db_pessoas_abrigadas, pd.DataFrame([novo])], ignore_index=True)
+                        
+                        # Salva também no Neon
+                        salvar_acolhimento_neon(novo)
+                        
                         st.success("Acolhido!")
                         st.rerun()
 
