@@ -8,4 +8,5 @@ font = "sans serif"
 
 [server]
 headless = true
-port = 8502
+# O Streamlit Cloud fornece a porta automaticamente.
+# Não defina um valor de porta fixo para evitar falhas de healthcheck.
