@@ -267,18 +267,18 @@ st.markdown("""
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
     
     :root {
-        --primary: #2563eb;
-        --primary-light: #3b82f6;
-        --primary-dark: #1d4ed8;
-        --success: #10b981;
-        --warning: #f59e0b;
-        --danger: #ef4444;
-        --bg-app: #f0f4f8;
-        --bg-card: #ffffff;
-        --text-main: #1f2937;
-        --text-light: #6b7280;
-        --border: #e5e7eb;
-        --shadow: 0 2px 8px rgba(0,0,0,0.1);
+        --primary: #60a5fa;
+        --primary-light: #93c5fd;
+        --primary-dark: #2563eb;
+        --success: #34d399;
+        --warning: #fbbf24;
+        --danger: #f87171;
+        --bg-app: #0f172a;
+        --bg-card: #111827;
+        --text-main: #e2e8f0;
+        --text-light: #94a3b8;
+        --border: #334155;
+        --shadow: 0 20px 50px rgba(0,0,0,0.35);
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -331,25 +331,32 @@ st.markdown("""
         font-size: 13px;
         margin: 4px;
     }
-    .badge-success { background: #d1fae5; color: #065f46; }
-    .badge-warning { background: #fef3c7; color: #78350f; }
-    .badge-danger { background: #fee2e2; color: #7f1d1d; }
-    .badge-info { background: #dbeafe; color: #0c2340; }
+    .badge-success { background: #164e3b; color: #a7f3d0; }
+    .badge-warning { background: #92400e; color: #fef3c7; }
+    .badge-danger { background: #7f1d1d; color: #fee2e2; }
+    .badge-info { background: #1e3a8a; color: #dbeafe; }
 
     /* BOTÕES - Maiores e Mais Visíveis */
     .stButton > button {
         font-size: 16px !important;
         padding: 12px 24px !important;
-        border-radius: 8px !important;
-        font-weight: 600 !important;
+        border-radius: 12px !important;
+        font-weight: 700 !important;
         border: none !important;
-        transition: all 0.2s !important;
+        transition: transform 0.28s ease, box-shadow 0.28s ease, background-color 0.28s ease !important;
         height: auto !important;
-        min-height: 44px !important;
+        min-height: 48px !important;
+        background: linear-gradient(135deg, #60a5fa 0%, #2563eb 100%) !important;
+        color: white !important;
+        box-shadow: 0 12px 30px rgba(96,165,250,0.18) !important;
     }
     .stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        transform: translateY(-3px) scale(1.01);
+        box-shadow: 0 18px 50px rgba(96,165,250,0.28) !important;
+        background: linear-gradient(135deg, #93c5fd 0%, #3b82f6 100%) !important;
+    }
+    .stButton > button:active {
+        transform: translateY(-1px) scale(0.995);
     }
 
     /* TEXTOS DE ENTRADA - Maiores */
@@ -358,9 +365,36 @@ st.markdown("""
     .stSelectbox > div > div > select,
     .stTextArea > div > div > textarea {
         font-size: 15px !important;
-        padding: 12px !important;
-        border-radius: 8px !important;
-        min-height: 40px !important;
+        padding: 14px 16px !important;
+        border-radius: 14px !important;
+        min-height: 48px !important;
+        background: #0f172a !important;
+        border: 1px solid #334155 !important;
+        color: #e2e8f0 !important;
+        box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.65) !important;
+        transition: border-color 0.28s ease, box-shadow 0.28s ease, background 0.28s ease !important;
+    }
+    .stTextInput > div > div > input:hover,
+    .stNumberInput > div > div > input:hover,
+    .stSelectbox > div > div > select:hover,
+    .stTextArea > div > div > textarea:hover {
+        border-color: #475569 !important;
+    }
+    .stTextInput > div > div > input::placeholder,
+    .stNumberInput > div > div > input::placeholder,
+    .stSelectbox > div > div > select::placeholder,
+    .stTextArea > div > div > textarea::placeholder {
+        color: #94a3b8 !important;
+        opacity: 1 !important;
+    }
+    .stTextInput > div > div > input:focus,
+    .stNumberInput > div > div > input:focus,
+    .stSelectbox > div > div > select:focus,
+    .stTextArea > div > div > textarea:focus {
+        outline: none !important;
+        border-color: var(--primary) !important;
+        box-shadow: 0 0 0 4px rgba(96,165,250,0.16) !important;
+        background: #111827 !important;
     }
 
     /* MENU/TABS NA SIDEBAR COM CORES */
@@ -378,7 +412,7 @@ st.markdown("""
         border: 1px solid var(--border);
     }
     .menu-item:hover {
-        background: #f3f4f6;
+        background: #1e293b;
         border-left-color: var(--primary);
     }
     .menu-item.active {
@@ -389,22 +423,56 @@ st.markdown("""
 
     /* LOGIN - Mais Acessível */
     .login-box {
-        background: white;
-        padding: 40px;
-        border-radius: 12px;
-        box-shadow: 0 10px 40px rgba(0,0,0,0.1);
-        max-width: 420px;
+        background: rgba(15, 23, 42, 0.92);
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        backdrop-filter: blur(20px);
+        padding: 44px 36px;
+        border-radius: 30px;
+        box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+        max-width: 460px;
         margin: auto;
+        position: relative;
+        overflow: hidden;
+    }
+    .login-box::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(135deg, rgba(96, 165, 250, 0.14), transparent 40%, rgba(59, 130, 246, 0.06));
+        pointer-events: none;
+    }
+    .login-box > * {
+        position: relative;
+        z-index: 1;
     }
     .login-box h1 {
-        font-size: 28px;
-        margin-bottom: 8px;
-        color: var(--primary);
+        font-size: 36px;
+        margin-bottom: 10px;
+        color: #93c5fd;
+        letter-spacing: -0.03em;
     }
     .login-box p {
-        color: var(--text-light);
-        margin-bottom: 24px;
+        color: #cbd5e1;
+        margin-bottom: 30px;
         font-size: 15px;
+        line-height: 1.7;
+    }
+    .login-box .login-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 14px;
+        border-radius: 999px;
+        background: rgba(96, 165, 250, 0.18);
+        color: #bfdbfe;
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 18px;
+    }
+    .login-box .login-hero {
+        color: #e2e8f0;
+        font-size: 14px;
+        margin-bottom: 32px;
     }
 
     /* TABELAS - Legíveis */
@@ -413,7 +481,7 @@ st.markdown("""
         border-collapse: collapse;
     }
     th {
-        background: var(--primary);
+        background: #1e293b;
         color: white;
         padding: 12px;
         text-align: left;
@@ -423,7 +491,7 @@ st.markdown("""
         padding: 12px;
         border-bottom: 1px solid var(--border);
     }
-    tr:hover { background: #f9fafb; }
+    tr:hover { background: #111827; }
 
     /* FORMULÁRIOS - Bem Espaçados */
     form {
@@ -438,9 +506,17 @@ st.markdown("""
 
     /* SIDEBAR - Limpo */
     [data-testid="stSidebar"] {
-        background-color: var(--bg-app);
+        background-color: var(--bg-card);
         border-right: 1px solid var(--border);
         padding: 20px 16px;
+        color: var(--text-main);
+    }
+    [data-testid="stSidebar"] * {
+        color: var(--text-main) !important;
+    }
+    [data-testid="stSidebar"] .stButton > button {
+        background-color: var(--primary) !important;
+        color: white !important;
     }
 
     /* ALERTAS - Grandes e Claros */
@@ -495,8 +571,9 @@ def login_page():
         st.markdown("<br><br><br>", unsafe_allow_html=True)
         st.markdown("""
         <div class="login-box">
-            <h1 style='color: #4F46E5; margin-bottom: 0;'>Atos 4</h1>
-            <p style='color: #64748B; font-size: 14px; margin-bottom: 30px;'>Acesse o sistema</p>
+            <span class="login-badge">🔒 Acesso Seguro</span>
+            <h1>Atos 4</h1>
+            <p class="login-hero">Bem-vindo ao painel da comunidade. Entre com seu usuário para continuar.</p>
         </div>
         """, unsafe_allow_html=True)
         
@@ -745,7 +822,7 @@ def dar_baixa_avulsa_peps(id_item, qtd_desejada):
         qtd_pendente -= qtd_a_retirar
     return True, "Baixa registrada no estoque real."
 
-def renderizar_mapa_alto_contraste(df_mapa, zoom_level=12, estilo_selecionado="Claro"):
+def renderizar_mapa_alto_contraste(df_mapa, zoom_level=12, estilo_selecionado="Escuro"):
     """
     Gera um mapa interativo com opções de visualização melhoradas.
     """
@@ -754,11 +831,11 @@ def renderizar_mapa_alto_contraste(df_mapa, zoom_level=12, estilo_selecionado="C
     
     # Define o estilo do mapa com base na escolha
     map_styles = {
-        "Claro": "carto-positron",       # Fundo branco (Melhor contraste)
+        "Claro": "carto-positron",       # Fundo branco
         "Escuro": "carto-dark-matter",   # Fundo preto
         "Estradas": "road"               # Mapa de ruas padrão
     }
-    style_uri = map_styles.get(estilo_selecionado, "carto-positron")
+    style_uri = map_styles.get(estilo_selecionado, "carto-dark-matter")
 
     # Conversão de Cores
     def hex_to_rgba(hex_color):
@@ -799,7 +876,7 @@ def renderizar_mapa_alto_contraste(df_mapa, zoom_level=12, estilo_selecionado="C
         layers=[camada],
         initial_view_state=visao,
         tooltip={
-            "html": "<div style='color:white; background:#1e293b; padding:10px; border-radius:5px;'><b>{nome}</b><br>{endereco}</div>"
+            "html": "<div style='color:#e2e8f0; background:#0f172a; padding:10px; border-radius:8px; border:1px solid #334155;'><b>{nome}</b><br>{endereco}</div>"
         }
     )
 
@@ -813,9 +890,9 @@ def gerar_html_impressao(df, titulo, subtitulo=""):
     estilo = """
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
-        body { font-family: 'Roboto', sans-serif; color: #000; padding: 20px; background: #fff; }
-        h1 { text-align: center; text-transform: uppercase; font-size: 18px; margin-bottom: 5px; color: #222; }
-        h2 { text-align: center; font-size: 14px; font-weight: normal; margin-bottom: 30px; color: #555; }
+        body { font-family: 'Roboto', sans-serif; color: #e2e8f0; padding: 20px; background: #0f172a; }
+        h1 { text-align: center; text-transform: uppercase; font-size: 18px; margin-bottom: 5px; color: #f8fafc; }
+        h2 { text-align: center; font-size: 14px; font-weight: normal; margin-bottom: 30px; color: #cbd5e1; }
         table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }
         th { background-color: #f3f3f3; border: 1px solid #ccc; padding: 8px; text-align: left; font-weight: bold; }
         td { border: 1px solid #ccc; padding: 8px; }
@@ -1044,7 +1121,7 @@ def main_app():
                                 <div class="subtitle-modern">
                                     👥 {fam['dependentes']} Dep. | {fam['endereco']}
                                 </div>
-                                <div style="font-size: 12px; margin-top: 5px; color: #64748B;">{status_mapa}</div>
+                                <div style="font-size: 12px; margin-top: 5px; color: #94a3b8;">{status_mapa}</div>
                             </div>
                             {tag_prio}
                         </div>
@@ -1065,9 +1142,9 @@ def main_app():
                 if st.session_state.entrega_ativa_familia == fam['id_familia']:
                     with st.container():
                         st.markdown(f"""
-                            <div style="background: #EFF6FF; border: 2px solid #3B82F6; border-radius: 12px; padding: 20px; margin: 8px 0;">
-                                <h4 style="color: #1D4ED8; margin: 0 0 4px 0;">📦 Painel de Entrega — {fam['nome']}</h4>
-                                <p style="color: #3B82F6; font-size: 13px; margin: 0;">Escolha o tipo de entrega abaixo</p>
+                            <div style="background: #111827; border: 2px solid var(--primary); border-radius: 12px; padding: 20px; margin: 8px 0;">
+                                <h4 style="color: #bfdbfe; margin: 0 0 4px 0;">📦 Painel de Entrega — {fam['nome']}</h4>
+                                <p style="color: #93c5fd; font-size: 13px; margin: 0;">Escolha o tipo de entrega abaixo</p>
                             </div>
                         """, unsafe_allow_html=True)
 
