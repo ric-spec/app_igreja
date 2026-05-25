@@ -417,6 +417,7 @@ def inicializar_neon():
             "CREATE TABLE IF NOT EXISTS atendimentos (id_atendimento SERIAL PRIMARY KEY, pessoa_nome VARCHAR(255), tipo_atendimento VARCHAR(255), descricao TEXT, data_atendimento TIMESTAMP, status VARCHAR(50), responsavel VARCHAR(255), data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
             "CREATE TABLE IF NOT EXISTS voluntarios (id_voluntario SERIAL PRIMARY KEY, nome VARCHAR(255) NOT NULL, telefone VARCHAR(20), email VARCHAR(255), cep VARCHAR(10), endereco TEXT, possui_veiculo BOOLEAN DEFAULT FALSE, tipo_veiculo VARCHAR(100), dias_disponiveis TEXT, horario_inicio TIME, horario_fim TIME, observacoes TEXT, data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ativo BOOLEAN DEFAULT TRUE);",
             "CREATE TABLE IF NOT EXISTS usuarios (id_usuario SERIAL PRIMARY KEY, login VARCHAR(100) UNIQUE NOT NULL, nome VARCHAR(255), senha_hash VARCHAR(255) NOT NULL, perfil VARCHAR(50) NOT NULL, ativo BOOLEAN DEFAULT TRUE, data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
+            "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS abas_acesso TEXT;",
             "CREATE TABLE IF NOT EXISTS catalogo (id_item SERIAL PRIMARY KEY, nome VARCHAR(255) NOT NULL, qtd_por_cesta INTEGER DEFAULT 1, categoria VARCHAR(100), ativo BOOLEAN DEFAULT TRUE, data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
             "CREATE TABLE IF NOT EXISTS lotes (id_lote SERIAL PRIMARY KEY, id_item INTEGER, nome_item VARCHAR(255), quantidade INTEGER, vencimento DATE, local_armazenagem VARCHAR(255), data_entrada TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ativo BOOLEAN DEFAULT TRUE, FOREIGN KEY (id_item) REFERENCES catalogo(id_item));",
             "CREATE TABLE IF NOT EXISTS parceiros (id_parceiro SERIAL PRIMARY KEY, tipo_pessoa VARCHAR(50), nome VARCHAR(255) NOT NULL, documento VARCHAR(50), telefone VARCHAR(20), email VARCHAR(255), cep VARCHAR(10), endereco TEXT, contato_preferencial VARCHAR(20), alerta_mensal BOOLEAN DEFAULT FALSE, alerta_anual BOOLEAN DEFAULT FALSE, ultimo_agradecimento_mensal TIMESTAMP, ultimo_agradecimento_anual TIMESTAMP, itens_ajuda TEXT, data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ativo BOOLEAN DEFAULT TRUE);",
@@ -889,6 +890,71 @@ def logout():
     st.session_state.user_role = None
     st.rerun()
 
+
+# ==========================================
+# GERENCIAMENTO DE PERMISSÕES E SENHAS
+# ==========================================
+def alterar_senha_neon(login, senha_nova):
+    """Altera a senha de um usuário no Neon"""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return False
+        
+        from sqlalchemy import text
+        nova_hash = hash_password(senha_nova)
+        with engine.begin() as conn:
+            conn.execute(
+                text("UPDATE usuarios SET senha_hash = %(senha)s WHERE login = %(login)s"),
+                {'senha': nova_hash, 'login': login}
+            )
+        return True
+    except Exception as e:
+        logging.warning(f"Erro ao alterar senha: {e}")
+        return False
+
+
+def carregar_permissoes_abas_neon(login):
+    """Carrega as abas permitidas para um usuário"""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return None
+        
+        query = "SELECT abas_acesso FROM usuarios WHERE login = %(login)s LIMIT 1;"
+        df = pd.read_sql_query(query, engine, params={'login': login})
+        if df.empty or df.iloc[0]['abas_acesso'] is None:
+            return None
+        
+        abas_str = df.iloc[0]['abas_acesso']
+        if isinstance(abas_str, str):
+            return [aba.strip() for aba in abas_str.split(',') if aba.strip()]
+        return None
+    except Exception as e:
+        logging.warning(f"Erro ao carregar permissões de abas: {e}")
+        return None
+
+
+def salvar_permissoes_abas_neon(login, abas_permitidas):
+    """Salva as abas permitidas para um usuário"""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return False
+        
+        from sqlalchemy import text
+        abas_str = ','.join(abas_permitidas) if abas_permitidas else None
+        with engine.begin() as conn:
+            conn.execute(
+                text("UPDATE usuarios SET abas_acesso = %(abas)s WHERE login = %(login)s"),
+                {'abas': abas_str, 'login': login}
+            )
+        return True
+    except Exception as e:
+        logging.warning(f"Erro ao salvar permissões de abas: {e}")
+        return False
+
+
 # ==========================================
 # 3. INTEGRAÇÃO DE APIs (Georreferenciação)
 # ==========================================
@@ -1265,13 +1331,46 @@ def main_app():
         st.markdown(f"<span class='badge badge-info'>{perfil_exibido.title()}</span>", unsafe_allow_html=True)
         st.markdown("---")
 
+        # OPÇÃO: Alterar Senha
+        with st.expander("🔐 Alterar Senha"):
+            with st.form("form_alterar_senha"):
+                senha_atual = st.text_input("Senha Atual", type="password", key="atual")
+                senha_nova = st.text_input("Nova Senha", type="password", key="nova")
+                senha_confirmada = st.text_input("Confirmar Nova Senha", type="password", key="confirmar")
+                
+                if st.form_submit_button("Alterar Senha", use_container_width=True):
+                    # Validar senha atual
+                    usuario_info = validar_usuario(st.session_state.user_login, senha_atual)
+                    if usuario_info:
+                        if senha_nova != senha_confirmada:
+                            st.error("As novas senhas não conferem.")
+                        elif len(senha_nova) < 6:
+                            st.error("A nova senha deve ter pelo menos 6 caracteres.")
+                        elif alterar_senha_neon(st.session_state.user_login, senha_nova):
+                            st.success("✅ Senha alterada com sucesso!")
+                        else:
+                            st.error("Erro ao alterar senha. Tente novamente.")
+                    else:
+                        st.error("Senha atual incorreta.")
+        
+        st.markdown("---")
+
         opcoes_base = ["Dashboard", "Despensa", "Famílias", "Parceiros", "Voluntários", "Histórico", "Modo SOS", "Mapa Famílias", "Relatórios"]
-        if st.session_state.user_role == 'master':
-            opcoes_menu = opcoes_base + ["Usuários"]
-        elif st.session_state.user_role == 'voluntario':
-            opcoes_menu = ["Despensa", "Famílias", "Mapa Famílias"]
+        
+        # Carregar permissões de abas do usuário
+        permissoes_abas = carregar_permissoes_abas_neon(st.session_state.user_login)
+        
+        # Se houver permissões específicas, usar somente elas
+        if permissoes_abas:
+            opcoes_menu = permissoes_abas
         else:
-            opcoes_menu = opcoes_base
+            # Caso contrário, usar o padrão baseado no perfil
+            if st.session_state.user_role == 'master':
+                opcoes_menu = opcoes_base + ["Usuários"]
+            elif st.session_state.user_role == 'voluntario':
+                opcoes_menu = ["Despensa", "Famílias", "Mapa Famílias"]
+            else:
+                opcoes_menu = opcoes_base
 
         menu_opcao = st.radio(
             "Navegação",
@@ -1780,6 +1879,49 @@ def main_app():
                             st.rerun()
         else:
             st.warning("Nenhum usuário cadastrado no sistema.")
+
+        # --- GERENCIAR PERMISSÕES DE ABAS ---
+        st.markdown("---")
+        st.markdown("### 🔓 Controle de Acesso às Abas")
+        st.markdown("<p class='subtitle-modern'>Customize quais abas cada usuário pode acessar (deixe em branco para usar as permissões padrão do perfil).</p>", unsafe_allow_html=True)
+        
+        df_usuarios = carregar_usuarios_neon()
+        if df_usuarios is not None and not df_usuarios.empty:
+            usuario_sel = st.selectbox(
+                "Selecione um usuário para customizar acesso:",
+                options=df_usuarios['login'].tolist(),
+                format_func=lambda x: f"{x} — {df_usuarios[df_usuarios['login'] == x]['nome'].iloc[0]}"
+            )
+            
+            if usuario_sel:
+                abas_disponiveis = ["Dashboard", "Despensa", "Famílias", "Parceiros", "Voluntários", "Histórico", "Modo SOS", "Mapa Famílias", "Relatórios", "Usuários"]
+                permissoes_atuais = carregar_permissoes_abas_neon(usuario_sel)
+                
+                st.markdown(f"#### Customizando: {usuario_sel}")
+                
+                # Checkbox para cada aba
+                abas_selecionadas = st.multiselect(
+                    "Selecione as abas permitidas:",
+                    options=abas_disponiveis,
+                    default=permissoes_atuais or [],
+                    help="Deixe vazio para usar as permissões padrão baseadas no perfil do usuário"
+                )
+                
+                col_save, col_clear = st.columns(2)
+                
+                with col_save:
+                    if st.button("💾 Salvar Permissões", use_container_width=True, type="primary"):
+                        if salvar_permissoes_abas_neon(usuario_sel, abas_selecionadas if abas_selecionadas else None):
+                            st.success(f"✅ Permissões de {usuario_sel} atualizadas com sucesso!")
+                        else:
+                            st.error("Erro ao salvar permissões.")
+                
+                with col_clear:
+                    if st.button("🔄 Usar Permissões Padrão", use_container_width=True):
+                        if salvar_permissoes_abas_neon(usuario_sel, None):
+                            st.success(f"✅ {usuario_sel} voltará a usar as permissões padrão do perfil.")
+                        else:
+                            st.error("Erro ao limpar permissões.")
 
     elif menu_opcao == "Voluntários":
         st.markdown("<div class='title-modern'>Gestão de Voluntários</div>", unsafe_allow_html=True)
