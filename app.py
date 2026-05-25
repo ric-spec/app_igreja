@@ -41,7 +41,7 @@ def carregar_usuario_por_login(login):
         if engine is None:
             return None
 
-        query = "SELECT id_usuario, login, nome, senha_hash, perfil, ativo FROM usuarios WHERE login = :login LIMIT 1;"
+        query = "SELECT id_usuario, login, nome, senha_hash, perfil, ativo FROM usuarios WHERE login = %(login)s LIMIT 1;"
         df = pd.read_sql_query(query, engine, params={'login': login.lower().strip()})
         if df.empty:
             return None
