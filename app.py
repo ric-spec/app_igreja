@@ -127,6 +127,8 @@ def salvar_familia_neon(dados_familia):
 
         dados_familia = dados_familia.copy()
         dados_familia.pop('id_familia', None)
+        if 'data_cadastro' not in dados_familia or not dados_familia['data_cadastro']:
+            dados_familia['data_cadastro'] = datetime.datetime.now()
         df = pd.DataFrame([dados_familia])
         df.to_sql('familias', engine, if_exists='append', index=False)
         st.success("✅ Família salva no Neon com sucesso!")
@@ -271,6 +273,26 @@ def salvar_lote_neon(dados_lote):
         return False
 
 
+def salvar_parceiro_neon(dados_parceiro):
+    """Salva dados de parceiros no Neon"""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return False
+
+        dados_parceiro = dados_parceiro.copy()
+        dados_parceiro.pop('id_parceiro', None)
+        if 'data_cadastro' not in dados_parceiro or not dados_parceiro['data_cadastro']:
+            dados_parceiro['data_cadastro'] = datetime.datetime.now()
+        df = pd.DataFrame([dados_parceiro])
+        df.to_sql('parceiros', engine, if_exists='append', index=False)
+        st.success("✅ Parceiro salvo no Neon com sucesso!")
+        return True
+    except Exception as e:
+        st.warning(f"⚠️ Erro ao salvar parceiro no Neon: {e}")
+        return False
+
+
 def carregar_catalogo_neon():
     """Carrega o catálogo de itens a partir do Neon."""
     try:
@@ -315,10 +337,17 @@ def carregar_familias_neon():
         if engine is None:
             return None
 
-        query = "SELECT id_familia, nome, dependentes, prioridade, cep, endereco, lat, lon, igreja, pastor, ultima_entrega FROM familias WHERE ativo = TRUE ORDER BY id_familia;"
+        query = "SELECT id_familia, nome, dependentes, prioridade, telefone, atendimento_tipo, cep, endereco, lat, lon, igreja, pastor, ultima_entrega, data_cadastro FROM familias WHERE ativo = TRUE ORDER BY id_familia;"
         df = pd.read_sql_query(query, engine)
+
         if 'dependentes' in df.columns:
             df['dependentes'] = df['dependentes'].fillna(0).astype(int)
+        if 'telefone' in df.columns:
+            df['telefone'] = df['telefone'].fillna('')
+        if 'atendimento_tipo' in df.columns:
+            df['atendimento_tipo'] = df['atendimento_tipo'].fillna('Esporádico')
+        if 'data_cadastro' in df.columns:
+            df['data_cadastro'] = pd.to_datetime(df['data_cadastro'], errors='coerce')
         return df
     except Exception as e:
         logging.warning(f"Não foi possível carregar famílias do Neon: {e}")
@@ -378,7 +407,9 @@ def inicializar_neon():
 
         # Lista de statements SQL separados para evitar timeout SSL
         schema_statements = [
-            "CREATE TABLE IF NOT EXISTS familias (id_familia SERIAL PRIMARY KEY, nome VARCHAR(255) NOT NULL, dependentes INTEGER, prioridade VARCHAR(50), cep VARCHAR(10), endereco TEXT, lat FLOAT, lon FLOAT, igreja VARCHAR(255), pastor VARCHAR(255), ultima_entrega TIMESTAMP, data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ativo BOOLEAN DEFAULT TRUE);",
+            "CREATE TABLE IF NOT EXISTS familias (id_familia SERIAL PRIMARY KEY, nome VARCHAR(255) NOT NULL, dependentes INTEGER, prioridade VARCHAR(50), telefone VARCHAR(30), atendimento_tipo VARCHAR(50), cep VARCHAR(10), endereco TEXT, lat FLOAT, lon FLOAT, igreja VARCHAR(255), pastor VARCHAR(255), ultima_entrega TIMESTAMP, data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ativo BOOLEAN DEFAULT TRUE);",
+            "ALTER TABLE familias ADD COLUMN IF NOT EXISTS telefone VARCHAR(30);",
+            "ALTER TABLE familias ADD COLUMN IF NOT EXISTS atendimento_tipo VARCHAR(50);",
             "CREATE TABLE IF NOT EXISTS entregas (id_entrega SERIAL PRIMARY KEY, id_familia INTEGER, nome_familia VARCHAR(255), data TIMESTAMP, tipo VARCHAR(255), itens TEXT, responsavel_entrega VARCHAR(255), data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (id_familia) REFERENCES familias(id_familia));",
             "CREATE TABLE IF NOT EXISTS sos_whatsapp (id_msg SERIAL PRIMARY KEY, telefone VARCHAR(20), nome VARCHAR(255), necessidade VARCHAR(255), pessoas INTEGER, cep VARCHAR(10), endereco TEXT, status VARCHAR(50), data_hora TIMESTAMP, respondido_por VARCHAR(255), data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
             "CREATE TABLE IF NOT EXISTS locais_acolhimento (id_local SERIAL PRIMARY KEY, nome VARCHAR(255), tipo VARCHAR(100), capacidade INTEGER, cep VARCHAR(10), endereco TEXT, lat FLOAT, lon FLOAT, ativo BOOLEAN DEFAULT TRUE, data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
@@ -388,7 +419,9 @@ def inicializar_neon():
             "CREATE TABLE IF NOT EXISTS usuarios (id_usuario SERIAL PRIMARY KEY, login VARCHAR(100) UNIQUE NOT NULL, nome VARCHAR(255), senha_hash VARCHAR(255) NOT NULL, perfil VARCHAR(50) NOT NULL, ativo BOOLEAN DEFAULT TRUE, data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
             "CREATE TABLE IF NOT EXISTS catalogo (id_item SERIAL PRIMARY KEY, nome VARCHAR(255) NOT NULL, qtd_por_cesta INTEGER DEFAULT 1, categoria VARCHAR(100), ativo BOOLEAN DEFAULT TRUE, data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
             "CREATE TABLE IF NOT EXISTS lotes (id_lote SERIAL PRIMARY KEY, id_item INTEGER, nome_item VARCHAR(255), quantidade INTEGER, vencimento DATE, local_armazenagem VARCHAR(255), data_entrada TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ativo BOOLEAN DEFAULT TRUE, FOREIGN KEY (id_item) REFERENCES catalogo(id_item));",
+            "CREATE TABLE IF NOT EXISTS parceiros (id_parceiro SERIAL PRIMARY KEY, tipo_pessoa VARCHAR(50), nome VARCHAR(255) NOT NULL, documento VARCHAR(50), telefone VARCHAR(20), email VARCHAR(255), cep VARCHAR(10), endereco TEXT, contato_preferencial VARCHAR(20), alerta_mensal BOOLEAN DEFAULT FALSE, alerta_anual BOOLEAN DEFAULT FALSE, ultimo_agradecimento_mensal TIMESTAMP, ultimo_agradecimento_anual TIMESTAMP, itens_ajuda TEXT, data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ativo BOOLEAN DEFAULT TRUE);",
             "CREATE INDEX IF NOT EXISTS idx_familias_nome ON familias(nome);",
+            "CREATE INDEX IF NOT EXISTS idx_parceiros_nome ON parceiros(nome);",
             "CREATE INDEX IF NOT EXISTS idx_sos_status ON sos_whatsapp(status);",
             "CREATE INDEX IF NOT EXISTS idx_usuarios_login ON usuarios(login);"
         ]
@@ -979,11 +1012,13 @@ if 'db_lotes' not in st.session_state:
 if 'db_familias' not in st.session_state:
     st.session_state.db_familias = pd.DataFrame([
         {
-            'id_familia': 1, 'nome': 'Maria de Fátima', 'dependentes': 3, 'prioridade': 'Alta', 
-            'cep': '36010001', 'endereco': 'Av. Barão do Rio Branco, 100 - Centro, Juiz de Fora/MG', 
-            'lat': -21.7611, 'lon': -43.3444, 
+            'id_familia': 1, 'nome': 'Maria de Fátima', 'dependentes': 3, 'prioridade': 'Alta',
+            'telefone': '(32) 98888-1234', 'atendimento_tipo': 'Contínuo',
+            'cep': '36010001', 'endereco': 'Av. Barão do Rio Branco, 100 - Centro, Juiz de Fora/MG',
+            'lat': -21.7611, 'lon': -43.3444,
             'igreja': 'Igreja Batista Central', 'pastor': 'Pr. Carlos',
-            'ultima_entrega': None
+            'ultima_entrega': None,
+            'data_cadastro': datetime.date(2026, 5, 1)
         }
     ])
 
@@ -1003,6 +1038,28 @@ if 'db_voluntarios' not in st.session_state:
         'id_voluntario', 'nome', 'telefone', 'email', 'cep', 'endereco',
         'possui_veiculo', 'tipo_veiculo', 'dias_disponiveis', 'horario_inicio',
         'horario_fim', 'observacoes', 'data_cadastro', 'ativo'
+    ])
+
+if 'db_parceiros' not in st.session_state:
+    st.session_state.db_parceiros = pd.DataFrame([
+        {
+            'id_parceiro': 1,
+            'tipo_pessoa': 'Pessoa Física',
+            'nome': 'Maria Aparecida',
+            'documento': '000.000.000-00',
+            'telefone': '(32) 98888-0000',
+            'email': 'maria@igreja.org',
+            'cep': '36010001',
+            'endereco': 'Rua das Flores, 123',
+            'contato_preferencial': 'E-mail',
+            'alerta_mensal': True,
+            'alerta_anual': True,
+            'ultimo_agradecimento_mensal': None,
+            'ultimo_agradecimento_anual': None,
+            'itens_ajuda': 'Arroz, Feijão, Leite em Pó',
+            'data_cadastro': datetime.date.today(),
+            'ativo': True
+        }
     ])
 
 if 'entrega_ativa_familia' not in st.session_state:
@@ -1208,7 +1265,7 @@ def main_app():
         st.markdown(f"<span class='badge badge-info'>{perfil_exibido.title()}</span>", unsafe_allow_html=True)
         st.markdown("---")
 
-        opcoes_base = ["Dashboard", "Despensa", "Famílias", "Voluntários", "Histórico", "Modo SOS", "Mapa Famílias", "Relatórios"]
+        opcoes_base = ["Dashboard", "Despensa", "Famílias", "Parceiros", "Voluntários", "Histórico", "Modo SOS", "Mapa Famílias", "Relatórios"]
         if st.session_state.user_role == 'master':
             opcoes_menu = opcoes_base + ["Usuários"]
         elif st.session_state.user_role == 'voluntario':
@@ -1315,11 +1372,17 @@ def main_app():
         st.markdown("---")
         st.markdown("<div class='title-modern'>Estoque Físico Atual</div>", unsafe_allow_html=True)
         if not st.session_state.db_lotes.empty and st.session_state.db_lotes['quantidade'].sum() > 0:
+            hoje = datetime.date.today()
             df_exibicao = pd.merge(st.session_state.db_lotes[st.session_state.db_lotes['quantidade'] > 0], st.session_state.db_catalogo, on='id_item')
-            df_exibicao = df_exibicao[['nome', 'quantidade', 'vencimento']].sort_values(by='vencimento')
-            df_exibicao['vencimento'] = pd.to_datetime(df_exibicao['vencimento']).dt.strftime('%d/%m/%Y')
-            df_exibicao.rename(columns={'nome': 'Produto', 'quantidade': 'Qtd Disponível', 'vencimento': 'Vence em'}, inplace=True)
-            st.dataframe(df_exibicao, use_container_width=True, hide_index=True)
+            df_exibicao = df_exibicao.groupby(['id_item', 'nome'], as_index=False).agg(
+                quantidade=('quantidade', 'sum'),
+                vencimento_proximo=('vencimento', 'min'),
+                vence_proximo=('vencimento', lambda s: (pd.to_datetime(s) <= pd.Timestamp(hoje + datetime.timedelta(days=30))).any())
+            )
+            df_exibicao['Vence em'] = pd.to_datetime(df_exibicao['vencimento_proximo']).dt.strftime('%d/%m/%Y')
+            df_exibicao['Alerta'] = df_exibicao['vence_proximo'].apply(lambda x: '⚠️ Vence em até 30 dias' if x else 'OK')
+            df_exibicao.rename(columns={'nome': 'Produto', 'quantidade': 'Qtd Disponível'}, inplace=True)
+            st.dataframe(df_exibicao[['Produto', 'Qtd Disponível', 'Vence em', 'Alerta']], use_container_width=True, hide_index=True)
         else:
             st.info("A despensa está vazia.")
 
@@ -1339,11 +1402,15 @@ def main_app():
                 dep = col_dep.number_input("Número de Dependentes", min_value=0)
                 prio = col_prio.selectbox("Prioridade", ["Normal", "Alta (Urgência)"])
                 
-                st.markdown("##### Endereço e Localização")
-                col_cep, col_num = st.columns([1, 2])
+                st.markdown("##### Contato e Endereço")
+                col_tel, col_cep = st.columns([1, 1])
+                telefone = col_tel.text_input("Telefone de Contato *", placeholder="(32) 99999-0000")
                 cep = col_cep.text_input("CEP (Somente números) *", max_chars=8)
-                numero = col_num.text_input("Número e Complemento *")
-                
+                numero = st.text_input("Número e Complemento *")
+
+                st.markdown("##### Tipo de Atendimento")
+                tipo_atendimento = st.selectbox("Atendimento", ["Contínuo", "Esporádico"])
+
                 # --- NOVOS CAMPOS PARA CORREÇÃO DO MAPA ---
                 st.markdown("##### 📍 Coordenadas (Opcional - Use se o mapa automático falhar)")
                 st.caption("Dica: No Google Maps, clique com o botão direito no local e copie os números (Ex: -23.55, -46.63)")
@@ -1357,7 +1424,7 @@ def main_app():
                 pastor = col_pastor.text_input("Nome do Pastor")
                 
                 if st.form_submit_button("Cadastrar Família", type="primary"):
-                    if nome and cep and numero:
+                    if nome and cep and numero and telefone:
                         lat, lon = None, None
                         endereco_display = "Endereço em processamento"
 
@@ -1386,12 +1453,20 @@ def main_app():
                         
                         # 3. Salva no Banco de Dados
                         nova_fam = {
-                            'id_familia': len(st.session_state.db_familias)+1, 
-                            'nome': nome, 'dependentes': dep, 'prioridade': prio.split(" ")[0],
-                            'cep': cep, 'endereco': endereco_display,
-                            'lat': lat, 'lon': lon, # Pode ser None se falhar
-                            'igreja': igreja if igreja else 'Não informado', 'pastor': pastor if pastor else '-',
-                            'ultima_entrega': None
+                            'id_familia': len(st.session_state.db_familias)+1,
+                            'nome': nome,
+                            'dependentes': dep,
+                            'prioridade': prio.split(" ")[0],
+                            'telefone': telefone,
+                            'atendimento_tipo': tipo_atendimento,
+                            'cep': cep,
+                            'endereco': endereco_display,
+                            'lat': lat,
+                            'lon': lon, # Pode ser None se falhar
+                            'igreja': igreja if igreja else 'Não informado',
+                            'pastor': pastor if pastor else '-',
+                            'ultima_entrega': None,
+                            'data_cadastro': datetime.date.today()
                         }
                         st.session_state.db_familias = pd.concat([st.session_state.db_familias, pd.DataFrame([nova_fam])], ignore_index=True)
                         
@@ -1416,6 +1491,9 @@ def main_app():
                 # Verifica se está no mapa
                 status_mapa = "📍 No Mapa" if pd.notnull(fam['lat']) else "⚠️ <b>Sem Mapa</b> (Exclua e cadastre com Lat/Lon)"
                 
+                data_cadastro_text = ''
+                if pd.notnull(fam.get('data_cadastro')):
+                    data_cadastro_text = pd.to_datetime(fam['data_cadastro']).strftime('%d/%m/%Y')
                 st.markdown(f"""
                     <div class="bento-card">
                         <div style="display: flex; justify-content: space-between; align-items: flex-start;">
@@ -1424,7 +1502,11 @@ def main_app():
                                 <div class="subtitle-modern">
                                     👥 {fam['dependentes']} Dep. | {fam['endereco']}
                                 </div>
+                                <div class="subtitle-modern" style="margin-top: 8px; font-size: 13px; color: #cbd5e1;">
+                                    ☎️ {fam.get('telefone','-')} | Atendimento: {fam.get('atendimento_tipo','-')}
+                                </div>
                                 <div style="font-size: 12px; margin-top: 5px; color: #94a3b8;">{status_mapa}</div>
+                                <div style="font-size: 12px; color: #94a3b8;">{('Cadastro: ' + data_cadastro_text) if data_cadastro_text else ''}</div>
                             </div>
                             {tag_prio}
                         </div>
@@ -1561,6 +1643,91 @@ def main_app():
                                         st.rerun()
         else:
             st.info("Nenhuma família cadastrada.")
+
+    elif menu_opcao == "Parceiros":
+        st.markdown("<div class='title-modern'>Cadastro de Parceiros</div>", unsafe_allow_html=True)
+        st.markdown("<p class='subtitle-modern'>Registre parceiros que ajudam a despensa e receba alertas de agradecimento.</p>", unsafe_allow_html=True)
+
+        with st.expander("➕ Cadastrar Novo Parceiro", expanded=True):
+            with st.form("form_parceiro", clear_on_submit=True):
+                st.markdown("##### Dados do Parceiro")
+                tipo_pessoa = st.radio("Tipo de Pessoa", ["Pessoa Física", "Pessoa Jurídica"], horizontal=True)
+                nome_par = st.text_input("Nome / Razão Social *")
+                documento = st.text_input("CPF / CNPJ")
+                telefone_par = st.text_input("Telefone *", placeholder="(32) 99999-0000")
+                email_par = st.text_input("E-mail")
+
+                st.markdown("##### Endereço")
+                cep_par = st.text_input("CEP", max_chars=8)
+                endereco_par = st.text_area("Endereço completo")
+
+                st.markdown("##### Preferências de Agradecimento")
+                contato_preferencial = st.selectbox("Enviar agradecimento por", ["E-mail", "Correios", "Ambos"])
+                alerta_mensal = st.checkbox("Alerta mensal", value=True)
+                alerta_anual = st.checkbox("Alerta anual", value=False)
+                itens_ajuda = st.text_area("Itens que costumam ajudar na despensa", help="Ex: arroz, feijão, óleo, leite em pó")
+
+                if st.form_submit_button("Cadastrar Parceiro", type="primary"):
+                    if nome_par and telefone_par:
+                        novo_parceiro = {
+                            'id_parceiro': len(st.session_state.db_parceiros) + 1,
+                            'tipo_pessoa': tipo_pessoa,
+                            'nome': nome_par,
+                            'documento': documento,
+                            'telefone': telefone_par,
+                            'email': email_par,
+                            'cep': cep_par,
+                            'endereco': endereco_par,
+                            'contato_preferencial': contato_preferencial,
+                            'alerta_mensal': alerta_mensal,
+                            'alerta_anual': alerta_anual,
+                            'ultimo_agradecimento_mensal': None,
+                            'ultimo_agradecimento_anual': None,
+                            'itens_ajuda': itens_ajuda,
+                            'data_cadastro': datetime.date.today(),
+                            'ativo': True
+                        }
+                        st.session_state.db_parceiros = pd.concat([st.session_state.db_parceiros, pd.DataFrame([novo_parceiro])], ignore_index=True)
+                        salvar_parceiro_neon(novo_parceiro)
+                        st.success("✅ Parceiro cadastrado com sucesso.")
+                        st.rerun()
+                    else:
+                        st.error("Preencha os campos obrigatórios.")
+
+        if st.session_state.db_parceiros.empty:
+            st.info("Nenhum parceiro registrado ainda.")
+        else:
+            hoje = datetime.date.today()
+            for _, par in st.session_state.db_parceiros.iterrows():
+                mensal_due = par['alerta_mensal'] and (pd.isna(par['ultimo_agradecimento_mensal']) or pd.to_datetime(par['ultimo_agradecimento_mensal']).date() <= hoje - datetime.timedelta(days=30))
+                anual_due = par['alerta_anual'] and (pd.isna(par['ultimo_agradecimento_anual']) or pd.to_datetime(par['ultimo_agradecimento_anual']).date() <= hoje - datetime.timedelta(days=365))
+                status_lista = []
+                if mensal_due:
+                    status_lista.append("Agradecimento mensal pendente")
+                if anual_due:
+                    status_lista.append("Agradecimento anual pendente")
+                if not status_lista:
+                    status_lista.append("Nenhum alerta pendente")
+
+                data_cadastro_text = pd.to_datetime(par['data_cadastro']).strftime('%d/%m/%Y') if pd.notnull(par.get('data_cadastro')) else 'Não informado'
+                st.markdown(f"""
+                    <div class='bento-card'>
+                        <div style='display: flex; justify-content: space-between; align-items: flex-start;'>
+                            <div>
+                                <div class='title-modern' style='font-size: 18px;'>{par['nome']}</div>
+                                <div class='subtitle-modern'>
+                                    {par['tipo_pessoa']} | {par.get('contato_preferencial', '-')}
+                                </div>
+                                <div style='font-size: 13px; margin-top: 8px; color: #cbd5e1;'>
+                                    ☎️ {par.get('telefone', '-')} | ✉️ {par.get('email', '-')}
+                                </div>
+                                <div style='font-size: 12px; color: #94a3b8; margin-top: 4px;'>Cadastro: {data_cadastro_text}</div>
+                                <div style='font-size: 13px; margin-top: 8px; color: #e2e8f0;'>Itens: {par.get('itens_ajuda', '-')}</div>
+                                <div style='font-size: 12px; margin-top: 8px; color: #facc15;'>{' • '.join(status_lista)}</div>
+                            </div>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
 
     elif menu_opcao == "Usuários":
         st.markdown("<div class='title-modern'>Gerenciamento de Usuários</div>", unsafe_allow_html=True)
