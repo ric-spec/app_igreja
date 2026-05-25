@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import datetime
+import hashlib
 import requests
 import pydeck as pdk
 from streamlit_geolocation import streamlit_geolocation
@@ -29,13 +30,103 @@ def get_engine():
         st.error(f"❌ Erro ao conectar ao Neon: {e}")
         return None
 
+
+def hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode('utf-8')).hexdigest()
+
+
+def carregar_usuario_por_login(login):
+    try:
+        engine = get_engine()
+        if engine is None:
+            return None
+
+        query = "SELECT id_usuario, login, nome, senha_hash, perfil, ativo FROM usuarios WHERE login = :login LIMIT 1;"
+        df = pd.read_sql_query(query, engine, params={'login': login.lower().strip()})
+        if df.empty:
+            return None
+        return df.iloc[0].to_dict()
+    except Exception as e:
+        logging.warning(f"Não foi possível carregar usuário do Neon: {e}")
+        return None
+
+
+def validar_usuario(login, senha):
+    login_canonico = login.lower().strip()
+    usuario = carregar_usuario_por_login(login_canonico)
+    if usuario and usuario.get('ativo', True):
+        if usuario['senha_hash'] == hash_password(senha):
+            usuario['login'] = usuario['login'].lower().strip()
+            usuario['nome'] = usuario.get('nome') or usuario['login']
+            return usuario
+
+    if login_canonico == 'admin' and senha == 'pibjf':
+        return {'login': 'admin', 'nome': 'Administrador', 'perfil': 'admin', 'ativo': True}
+    if login_canonico == 'master' and senha == 'pibjf':
+        return {'login': 'master', 'nome': 'Master', 'perfil': 'master', 'ativo': True}
+    return None
+
+
+def carregar_usuarios_neon():
+    try:
+        engine = get_engine()
+        if engine is None:
+            return None
+
+        query = "SELECT id_usuario, login, nome, perfil, ativo FROM usuarios ORDER BY id_usuario;"
+        df = pd.read_sql_query(query, engine)
+        if 'ativo' in df.columns:
+            df['ativo'] = df['ativo'].fillna(True)
+        return df
+    except Exception as e:
+        logging.warning(f"Não foi possível carregar usuários do Neon: {e}")
+        return None
+
+
+def salvar_usuario_neon(dados_usuario):
+    try:
+        engine = get_engine()
+        if engine is None:
+            return False
+
+        dados_usuario = dados_usuario.copy()
+        dados_usuario.pop('id_usuario', None)
+        senha = dados_usuario.pop('senha', None)
+        dados_usuario['senha_hash'] = hash_password(senha or '')
+        dados_usuario['login'] = dados_usuario.get('login', '').lower().strip()
+        df = pd.DataFrame([dados_usuario])
+        df.to_sql('usuarios', engine, if_exists='append', index=False)
+        st.success("✅ Usuário salvo no Neon com sucesso!")
+        return True
+    except Exception as e:
+        st.warning(f"⚠️ Erro ao salvar usuário no Neon: {e}")
+        return False
+
+
+def set_usuario_ativo_neon(id_usuario, ativo=True):
+    try:
+        engine = get_engine()
+        if engine is None:
+            return False
+
+        from sqlalchemy import text
+        with engine.begin() as conn:
+            conn.execute(text("UPDATE usuarios SET ativo = :ativo WHERE id_usuario = :id"), {'ativo': ativo, 'id': id_usuario})
+        return True
+    except Exception as e:
+        logging.warning(f"Não foi possível atualizar status do usuário no Neon: {e}")
+        return False
+
+
 def salvar_familia_neon(dados_familia):
     """Salva dados de uma família no Neon"""
     try:
         engine = get_engine()
         if engine is None:
             return False
-        
+
+        dados_familia = dados_familia.copy()
+        dados_familia.pop('id_familia', None)
         df = pd.DataFrame([dados_familia])
         df.to_sql('familias', engine, if_exists='append', index=False)
         st.success("✅ Família salva no Neon com sucesso!")
@@ -44,13 +135,32 @@ def salvar_familia_neon(dados_familia):
         st.warning(f"⚠️ Erro ao salvar família no Neon: {e}")
         return False
 
+
+def excluir_familia_neon(id_familia):
+    """Marca família como inativa no Neon."""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return False
+
+        from sqlalchemy import text
+        with engine.begin() as conn:
+            conn.execute(text("UPDATE familias SET ativo = FALSE WHERE id_familia = :id"), {'id': id_familia})
+        return True
+    except Exception as e:
+        logging.warning(f"Não foi possível excluir família no Neon: {e}")
+        return False
+
+
 def salvar_entrega_neon(dados_entrega):
     """Salva dados de uma entrega no Neon"""
     try:
         engine = get_engine()
         if engine is None:
             return False
-        
+
+        dados_entrega = dados_entrega.copy()
+        dados_entrega.pop('id_entrega', None)
         df = pd.DataFrame([dados_entrega])
         df.to_sql('entregas', engine, if_exists='append', index=False)
         st.success("✅ Entrega registrada no Neon com sucesso!")
@@ -124,7 +234,14 @@ def salvar_item_catalogo_neon(dados_item):
         engine = get_engine()
         if engine is None:
             return False
-        
+
+        dados_item = dados_item.copy()
+        if 'categoria' not in dados_item:
+            dados_item['categoria'] = 'Avulso'
+        if 'qtd_por_cesta' not in dados_item:
+            dados_item['qtd_por_cesta'] = 0
+
+        dados_item.pop('id_item', None)
         df = pd.DataFrame([dados_item])
         df.to_sql('catalogo', engine, if_exists='append', index=False)
         st.success("✅ Item adicionado ao catálogo de despensa!")
@@ -139,7 +256,12 @@ def salvar_lote_neon(dados_lote):
         engine = get_engine()
         if engine is None:
             return False
-        
+
+        dados_lote = dados_lote.copy()
+        if 'nome_item' not in dados_lote:
+            dados_lote['nome_item'] = ''
+
+        dados_lote.pop('id_lote', None)
         df = pd.DataFrame([dados_lote])
         df.to_sql('lotes', engine, if_exists='append', index=False)
         st.success("✅ Lote de estoque registrado com sucesso!")
@@ -147,6 +269,100 @@ def salvar_lote_neon(dados_lote):
     except Exception as e:
         st.warning(f"⚠️ Erro ao salvar lote: {e}")
         return False
+
+
+def carregar_catalogo_neon():
+    """Carrega o catálogo de itens a partir do Neon."""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return None
+
+        query = "SELECT id_item, nome, qtd_por_cesta, categoria FROM catalogo WHERE ativo = TRUE ORDER BY id_item;"
+        df = pd.read_sql_query(query, engine)
+        if 'categoria' not in df.columns:
+            df['categoria'] = 'Extra'
+        df['qtd_por_cesta'] = df['qtd_por_cesta'].fillna(0).astype(int)
+        return df
+    except Exception as e:
+        logging.warning(f"Não foi possível carregar catálogo do Neon: {e}")
+        return None
+
+
+def carregar_lotes_neon():
+    """Carrega os lotes de estoque a partir do Neon."""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return None
+
+        query = "SELECT id_lote, id_item, nome_item, quantidade, vencimento, local_armazenagem, data_entrada, ativo FROM lotes WHERE ativo = TRUE ORDER BY vencimento;"
+        df = pd.read_sql_query(query, engine)
+        if 'nome_item' not in df.columns:
+            df['nome_item'] = None
+        if 'quantidade' in df.columns:
+            df['quantidade'] = df['quantidade'].fillna(0).astype(int)
+        return df
+    except Exception as e:
+        logging.warning(f"Não foi possível carregar lotes do Neon: {e}")
+        return None
+
+
+def carregar_familias_neon():
+    """Carrega as famílias ativas a partir do Neon."""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return None
+
+        query = "SELECT id_familia, nome, dependentes, prioridade, cep, endereco, lat, lon, igreja, pastor, ultima_entrega FROM familias WHERE ativo = TRUE ORDER BY id_familia;"
+        df = pd.read_sql_query(query, engine)
+        if 'dependentes' in df.columns:
+            df['dependentes'] = df['dependentes'].fillna(0).astype(int)
+        return df
+    except Exception as e:
+        logging.warning(f"Não foi possível carregar famílias do Neon: {e}")
+        return None
+
+
+def carregar_entregas_neon():
+    """Carrega o histórico de entregas a partir do Neon."""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return None
+
+        query = "SELECT id_entrega, nome_familia, data, tipo FROM entregas ORDER BY id_entrega DESC;"
+        df = pd.read_sql_query(query, engine)
+        if 'data' in df.columns:
+            df['data'] = pd.to_datetime(df['data']).dt.date
+        return df
+    except Exception as e:
+        logging.warning(f"Não foi possível carregar entregas do Neon: {e}")
+        return None
+
+
+def refresh_estoque_neon(force=False):
+    """Atualiza o estoque local a partir dos dados do Neon."""
+    now = datetime.datetime.now()
+    if not force and 'last_estoque_refresh' in st.session_state:
+        delta = now - st.session_state.last_estoque_refresh
+        if delta.total_seconds() < 15:
+            return
+
+    cat = carregar_catalogo_neon()
+    lot = carregar_lotes_neon()
+    fam = carregar_familias_neon()
+    ent = carregar_entregas_neon()
+    if cat is not None:
+        st.session_state.db_catalogo = cat
+    if lot is not None:
+        st.session_state.db_lotes = lot
+    if fam is not None:
+        st.session_state.db_familias = fam
+    if ent is not None:
+        st.session_state.db_entregas = ent
+    st.session_state.last_estoque_refresh = now
 
 # ==========================================
 # FUNÇÃO DE INICIALIZAÇÃO DO NEON
@@ -169,10 +385,12 @@ def inicializar_neon():
             "CREATE TABLE IF NOT EXISTS pessoas_abrigadas (id_acolhido SERIAL PRIMARY KEY, id_local INTEGER, nome_responsavel VARCHAR(255), qtd_pessoas INTEGER, cep_origem VARCHAR(10), endereco_origem TEXT, lat_origem FLOAT, lon_origem FLOAT, data_entrada TIMESTAMP, responsavel_checkin VARCHAR(255), data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (id_local) REFERENCES locais_acolhimento(id_local));",
             "CREATE TABLE IF NOT EXISTS atendimentos (id_atendimento SERIAL PRIMARY KEY, pessoa_nome VARCHAR(255), tipo_atendimento VARCHAR(255), descricao TEXT, data_atendimento TIMESTAMP, status VARCHAR(50), responsavel VARCHAR(255), data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
             "CREATE TABLE IF NOT EXISTS voluntarios (id_voluntario SERIAL PRIMARY KEY, nome VARCHAR(255) NOT NULL, telefone VARCHAR(20), email VARCHAR(255), cep VARCHAR(10), endereco TEXT, possui_veiculo BOOLEAN DEFAULT FALSE, tipo_veiculo VARCHAR(100), dias_disponiveis TEXT, horario_inicio TIME, horario_fim TIME, observacoes TEXT, data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ativo BOOLEAN DEFAULT TRUE);",
+            "CREATE TABLE IF NOT EXISTS usuarios (id_usuario SERIAL PRIMARY KEY, login VARCHAR(100) UNIQUE NOT NULL, nome VARCHAR(255), senha_hash VARCHAR(255) NOT NULL, perfil VARCHAR(50) NOT NULL, ativo BOOLEAN DEFAULT TRUE, data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
             "CREATE TABLE IF NOT EXISTS catalogo (id_item SERIAL PRIMARY KEY, nome VARCHAR(255) NOT NULL, qtd_por_cesta INTEGER DEFAULT 1, categoria VARCHAR(100), ativo BOOLEAN DEFAULT TRUE, data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
             "CREATE TABLE IF NOT EXISTS lotes (id_lote SERIAL PRIMARY KEY, id_item INTEGER, nome_item VARCHAR(255), quantidade INTEGER, vencimento DATE, local_armazenagem VARCHAR(255), data_entrada TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ativo BOOLEAN DEFAULT TRUE, FOREIGN KEY (id_item) REFERENCES catalogo(id_item));",
             "CREATE INDEX IF NOT EXISTS idx_familias_nome ON familias(nome);",
-            "CREATE INDEX IF NOT EXISTS idx_sos_status ON sos_whatsapp(status);"
+            "CREATE INDEX IF NOT EXISTS idx_sos_status ON sos_whatsapp(status);",
+            "CREATE INDEX IF NOT EXISTS idx_usuarios_login ON usuarios(login);"
         ]
 
         with engine.connect() as conn:
@@ -183,6 +401,27 @@ def inicializar_neon():
                 except Exception as stmt_error:
                     logging.warning(f"Statement falhou (pode ser normal se tabela já existe): {stmt_error}")
             conn.commit()
+
+            try:
+                usuarios_count = conn.execute(text("SELECT COUNT(*) FROM usuarios;")).scalar()
+                if usuarios_count == 0:
+                    senha_padrao = hash_password('pibjf')
+                    conn.execute(text(
+                        "INSERT INTO usuarios (login, nome, senha_hash, perfil, ativo) VALUES "
+                        "(:login_admin, :nome_admin, :senha, :perfil_admin, TRUE), "
+                        "(:login_master, :nome_master, :senha, :perfil_master, TRUE);"
+                    ), {
+                        'login_admin': 'admin',
+                        'nome_admin': 'Administrador',
+                        'login_master': 'master',
+                        'nome_master': 'Master',
+                        'senha': senha_padrao,
+                        'perfil_admin': 'admin',
+                        'perfil_master': 'master'
+                    })
+                    logging.info("Usuários padrão criados no Neon: admin e master.")
+            except Exception as default_user_error:
+                logging.warning(f"Não foi possível criar usuário padrão no Neon: {default_user_error}")
             
         logging.info("🚀 Banco de dados Neon inicializado com sucesso!")
         
@@ -561,6 +800,12 @@ st.markdown("""
 # ==========================================
 if 'authenticated' not in st.session_state:
     st.session_state.authenticated = False
+if 'current_user' not in st.session_state:
+    st.session_state.current_user = None
+if 'user_login' not in st.session_state:
+    st.session_state.user_login = None
+if 'user_role' not in st.session_state:
+    st.session_state.user_role = None
 
 def login_page():
     # Centraliza o conteúdo vertical e horizontalmente usando colunas
@@ -583,14 +828,20 @@ def login_page():
             submit = st.form_submit_button("Entrar no Sistema", use_container_width=True, type="primary")
             
             if submit:
-                # Simulação de autenticação (Hardcoded para demo)
-                if usuario == "admin" and senha == "pibjf":
-                    st.session_state.authenticated = True
-                    st.toast("Login realizado com sucesso!", icon="🎉")
-                    time.sleep(0.5)
-                    st.rerun()
+                if usuario and senha:
+                    usuario_info = validar_usuario(usuario, senha)
+                    if usuario_info:
+                        st.session_state.authenticated = True
+                        st.session_state.current_user = usuario_info.get('nome', usuario_info['login'])
+                        st.session_state.user_login = usuario_info['login']
+                        st.session_state.user_role = usuario_info['perfil']
+                        st.toast("Login realizado com sucesso!", icon="🎉")
+                        time.sleep(0.5)
+                        st.rerun()
+                    else:
+                        st.error("Credenciais inválidas. Tente novamente.")
                 else:
-                    st.error("Credenciais inválidas. Tente novamente.")
+                    st.error("Preencha usuário e senha.")
         
         st.markdown("""
             <div style='text-align: center; margin-top: 20px; color: #94A3B8; font-size: 12px;'>
@@ -600,6 +851,9 @@ def login_page():
 
 def logout():
     st.session_state.authenticated = False
+    st.session_state.current_user = None
+    st.session_state.user_login = None
+    st.session_state.user_role = None
     st.rerun()
 
 # ==========================================
@@ -638,88 +892,88 @@ def geocodificar_endereco(endereco_busca):
 if 'db_catalogo' not in st.session_state:
     st.session_state.db_catalogo = pd.DataFrame([
         # Grãos e Cereais
-        {'id_item': 1, 'nome': 'Arroz (5kg)', 'qtd_por_cesta': 1},
-        {'id_item': 2, 'nome': 'Feijão (1kg)', 'qtd_por_cesta': 2},
-        {'id_item': 3, 'nome': 'Macarrão (500g)', 'qtd_por_cesta': 2},
-        {'id_item': 4, 'nome': 'Farinha de Trigo (1kg)', 'qtd_por_cesta': 1},
+        {'id_item': 1, 'nome': 'Arroz (5kg)', 'qtd_por_cesta': 1, 'categoria': 'Cesta'},
+        {'id_item': 2, 'nome': 'Feijão (1kg)', 'qtd_por_cesta': 2, 'categoria': 'Cesta'},
+        {'id_item': 3, 'nome': 'Macarrão (500g)', 'qtd_por_cesta': 2, 'categoria': 'Cesta'},
+        {'id_item': 4, 'nome': 'Farinha de Trigo (1kg)', 'qtd_por_cesta': 1, 'categoria': 'Cesta'},
         
         # Óleos e Condimentos
-        {'id_item': 5, 'nome': 'Óleo de Soja (900ml)', 'qtd_por_cesta': 1},
-        {'id_item': 6, 'nome': 'Sal (1kg)', 'qtd_por_cesta': 1},
-        {'id_item': 7, 'nome': 'Açúcar (1kg)', 'qtd_por_cesta': 1},
+        {'id_item': 5, 'nome': 'Óleo de Soja (900ml)', 'qtd_por_cesta': 1, 'categoria': 'Cesta'},
+        {'id_item': 6, 'nome': 'Sal (1kg)', 'qtd_por_cesta': 1, 'categoria': 'Cesta'},
+        {'id_item': 7, 'nome': 'Açúcar (1kg)', 'qtd_por_cesta': 1, 'categoria': 'Cesta'},
         
         # Laticínios e Proteínas
-        {'id_item': 8, 'nome': 'Leite em Pó (400g)', 'qtd_por_cesta': 1},
-        {'id_item': 9, 'nome': 'Ovo (dúzia)', 'qtd_por_cesta': 1},
-        {'id_item': 10, 'nome': 'Sardinha em Lata (120g)', 'qtd_por_cesta': 1},
+        {'id_item': 8, 'nome': 'Leite em Pó (400g)', 'qtd_por_cesta': 1, 'categoria': 'Cesta'},
+        {'id_item': 9, 'nome': 'Ovo (dúzia)', 'qtd_por_cesta': 1, 'categoria': 'Cesta'},
+        {'id_item': 10, 'nome': 'Sardinha em Lata (120g)', 'qtd_por_cesta': 1, 'categoria': 'Cesta'},
         
         # Frutas e Vegetais
-        {'id_item': 11, 'nome': 'Batata-doce (kg)', 'qtd_por_cesta': 1},
-        {'id_item': 12, 'nome': 'Cebola (kg)', 'qtd_por_cesta': 1},
+        {'id_item': 11, 'nome': 'Batata-doce (kg)', 'qtd_por_cesta': 1, 'categoria': 'Cesta'},
+        {'id_item': 12, 'nome': 'Cebola (kg)', 'qtd_por_cesta': 1, 'categoria': 'Cesta'},
         
         # Bebidas
-        {'id_item': 13, 'nome': 'Café (500g)', 'qtd_por_cesta': 1},
-        {'id_item': 14, 'nome': 'Achocolatado (400g)', 'qtd_por_cesta': 1},
+        {'id_item': 13, 'nome': 'Café (500g)', 'qtd_por_cesta': 1, 'categoria': 'Cesta'},
+        {'id_item': 14, 'nome': 'Achocolatado (400g)', 'qtd_por_cesta': 1, 'categoria': 'Cesta'},
         
         # Produtos de Higiene/Limpeza
-        {'id_item': 15, 'nome': 'Sabão em Pó (500g)', 'qtd_por_cesta': 1},
-        {'id_item': 16, 'nome': 'Desinfetante (1L)', 'qtd_por_cesta': 1},
-        {'id_item': 17, 'nome': 'Sabonete (unidade)', 'qtd_por_cesta': 1},
+        {'id_item': 15, 'nome': 'Sabão em Pó (500g)', 'qtd_por_cesta': 1, 'categoria': 'Cesta'},
+        {'id_item': 16, 'nome': 'Desinfetante (1L)', 'qtd_por_cesta': 1, 'categoria': 'Cesta'},
+        {'id_item': 17, 'nome': 'Sabonete (unidade)', 'qtd_por_cesta': 1, 'categoria': 'Cesta'},
     ])
 
 if 'db_lotes' not in st.session_state:
     st.session_state.db_lotes = pd.DataFrame([
         # Grãos - Arroz
-        {'id_lote': 1, 'id_item': 1, 'quantidade': 25, 'vencimento': datetime.date(2026, 12, 1)},
+        {'id_lote': 1, 'id_item': 1, 'nome_item': 'Arroz (5kg)', 'quantidade': 25, 'vencimento': datetime.date(2026, 12, 1)},
         
         # Grãos - Feijão
-        {'id_lote': 2, 'id_item': 2, 'quantidade': 30, 'vencimento': datetime.date(2026, 8, 15)},
-        {'id_lote': 3, 'id_item': 2, 'quantidade': 15, 'vencimento': datetime.date(2026, 9, 20)},
+        {'id_lote': 2, 'id_item': 2, 'nome_item': 'Feijão (1kg)', 'quantidade': 30, 'vencimento': datetime.date(2026, 8, 15)},
+        {'id_lote': 3, 'id_item': 2, 'nome_item': 'Feijão (1kg)', 'quantidade': 15, 'vencimento': datetime.date(2026, 9, 20)},
         
         # Macarrão
-        {'id_lote': 4, 'id_item': 3, 'quantidade': 40, 'vencimento': datetime.date(2026, 11, 15)},
+        {'id_lote': 4, 'id_item': 3, 'nome_item': 'Macarrão (500g)', 'quantidade': 40, 'vencimento': datetime.date(2026, 11, 15)},
         
         # Farinha
-        {'id_lote': 5, 'id_item': 4, 'quantidade': 20, 'vencimento': datetime.date(2026, 10, 10)},
+        {'id_lote': 5, 'id_item': 4, 'nome_item': 'Farinha de Trigo (1kg)', 'quantidade': 20, 'vencimento': datetime.date(2026, 10, 10)},
         
         # Óleo
-        {'id_lote': 6, 'id_item': 5, 'quantidade': 35, 'vencimento': datetime.date(2026, 3, 20)},
+        {'id_lote': 6, 'id_item': 5, 'nome_item': 'Óleo de Soja (900ml)', 'quantidade': 35, 'vencimento': datetime.date(2026, 3, 20)},
         
         # Sal
-        {'id_lote': 7, 'id_item': 6, 'quantidade': 50, 'vencimento': datetime.date(2027, 6, 15)},
+        {'id_lote': 7, 'id_item': 6, 'nome_item': 'Sal (1kg)', 'quantidade': 50, 'vencimento': datetime.date(2027, 6, 15)},
         
         # Açúcar
-        {'id_lote': 8, 'id_item': 7, 'quantidade': 30, 'vencimento': datetime.date(2026, 7, 30)},
+        {'id_lote': 8, 'id_item': 7, 'nome_item': 'Açúcar (1kg)', 'quantidade': 30, 'vencimento': datetime.date(2026, 7, 30)},
         
         # Leite em Pó
-        {'id_lote': 9, 'id_item': 8, 'quantidade': 18, 'vencimento': datetime.date(2026, 5, 15)},
+        {'id_lote': 9, 'id_item': 8, 'nome_item': 'Leite em Pó (400g)', 'quantidade': 18, 'vencimento': datetime.date(2026, 5, 15)},
         
         # Ovos
-        {'id_lote': 10, 'id_item': 9, 'quantidade': 12, 'vencimento': datetime.date(2026, 4, 30)},
+        {'id_lote': 10, 'id_item': 9, 'nome_item': 'Ovo (dúzia)', 'quantidade': 12, 'vencimento': datetime.date(2026, 4, 30)},
         
         # Sardinha
-        {'id_lote': 11, 'id_item': 10, 'quantidade': 25, 'vencimento': datetime.date(2026, 9, 10)},
+        {'id_lote': 11, 'id_item': 10, 'nome_item': 'Sardinha em Lata (120g)', 'quantidade': 25, 'vencimento': datetime.date(2026, 9, 10)},
         
         # Batata-doce
-        {'id_lote': 12, 'id_item': 11, 'quantidade': 40, 'vencimento': datetime.date(2026, 5, 20)},
+        {'id_lote': 12, 'id_item': 11, 'nome_item': 'Batata-doce (kg)', 'quantidade': 40, 'vencimento': datetime.date(2026, 5, 20)},
         
         # Cebola
-        {'id_lote': 13, 'id_item': 12, 'quantidade': 35, 'vencimento': datetime.date(2026, 6, 10)},
+        {'id_lote': 13, 'id_item': 12, 'nome_item': 'Cebola (kg)', 'quantidade': 35, 'vencimento': datetime.date(2026, 6, 10)},
         
         # Café
-        {'id_lote': 14, 'id_item': 13, 'quantidade': 20, 'vencimento': datetime.date(2026, 12, 15)},
+        {'id_lote': 14, 'id_item': 13, 'nome_item': 'Café (500g)', 'quantidade': 20, 'vencimento': datetime.date(2026, 12, 15)},
         
         # Achocolatado
-        {'id_lote': 15, 'id_item': 14, 'quantidade': 15, 'vencimento': datetime.date(2026, 8, 20)},
+        {'id_lote': 15, 'id_item': 14, 'nome_item': 'Achocolatado (400g)', 'quantidade': 15, 'vencimento': datetime.date(2026, 8, 20)},
         
         # Sabão em Pó
-        {'id_lote': 16, 'id_item': 15, 'quantidade': 22, 'vencimento': datetime.date(2026, 10, 25)},
+        {'id_lote': 16, 'id_item': 15, 'nome_item': 'Sabão em Pó (500g)', 'quantidade': 22, 'vencimento': datetime.date(2026, 10, 25)},
         
         # Desinfetante
-        {'id_lote': 17, 'id_item': 16, 'quantidade': 18, 'vencimento': datetime.date(2026, 9, 5)},
+        {'id_lote': 17, 'id_item': 16, 'nome_item': 'Desinfetante (1L)', 'quantidade': 18, 'vencimento': datetime.date(2026, 9, 5)},
         
         # Sabonete
-        {'id_lote': 18, 'id_item': 17, 'quantidade': 48, 'vencimento': datetime.date(2026, 11, 30)},
+        {'id_lote': 18, 'id_item': 17, 'nome_item': 'Sabonete (unidade)', 'quantidade': 48, 'vencimento': datetime.date(2026, 11, 30)},
     ])
 
 if 'db_familias' not in st.session_state:
@@ -784,6 +1038,8 @@ def calcular_cestas_possiveis():
 
 def excluir_familia_manual(id_familia):
     st.session_state.db_familias = st.session_state.db_familias[st.session_state.db_familias['id_familia'] != id_familia].reset_index(drop=True)
+    excluir_familia_neon(id_familia)
+
 
 def alocar_cesta_peps(id_familia):
     if calcular_cestas_possiveis() < 1:
@@ -800,13 +1056,20 @@ def alocar_cesta_peps(id_familia):
             st.session_state.db_lotes.at[idx, 'quantidade'] -= qtd_a_retirar
             qtd_pendente -= qtd_a_retirar
             
-    nova_entrega = {'id_entrega': len(st.session_state.db_entregas)+1, 'nome_familia': nome_familia, 'data': datetime.date.today(), 'tipo': 'Cesta Padrão'}
+    nova_entrega = {
+        'id_entrega': len(st.session_state.db_entregas)+1,
+        'id_familia': id_familia,
+        'nome_familia': nome_familia,
+        'data': datetime.date.today(),
+        'tipo': 'Cesta Padrão'
+    }
     st.session_state.db_entregas = pd.concat([st.session_state.db_entregas, pd.DataFrame([nova_entrega])], ignore_index=True)
     
     # Salva também no Neon
     salvar_entrega_neon(nova_entrega)
     
     excluir_familia_manual(id_familia)
+    refresh_estoque_neon(force=True)
     return True, f"Cesta entregue para {nome_familia}. Família removida da fila de espera!"
 
 def dar_baixa_avulsa_peps(id_item, qtd_desejada):
@@ -936,13 +1199,26 @@ def gerar_html_impressao(df, titulo, subtitulo=""):
 # 6. APLICAÇÃO PRINCIPAL (Pós-Login)
 # ==========================================
 def main_app():
+    refresh_estoque_neon()
     # --- Sidebar de Navegação ---
     with st.sidebar:
-        st.markdown(f"### Olá, Admin 👋")
+        nome_exibido = st.session_state.current_user or 'Usuário'
+        perfil_exibido = st.session_state.user_role or 'visitante'
+        st.markdown(f"### Olá, {nome_exibido} 👋")
+        st.markdown(f"<span class='badge badge-info'>{perfil_exibido.title()}</span>", unsafe_allow_html=True)
         st.markdown("---")
+
+        opcoes_base = ["Dashboard", "Despensa", "Famílias", "Voluntários", "Histórico", "Modo SOS", "Mapa Famílias", "Relatórios"]
+        if st.session_state.user_role == 'master':
+            opcoes_menu = opcoes_base + ["Usuários"]
+        elif st.session_state.user_role == 'voluntario':
+            opcoes_menu = ["Despensa", "Famílias", "Mapa Famílias"]
+        else:
+            opcoes_menu = opcoes_base
+
         menu_opcao = st.radio(
             "Navegação",
-            ["Dashboard", "Despensa", "Famílias", "Voluntários", "Histórico", "Modo SOS", "Mapa Famílias", "Relatórios"],
+            opcoes_menu,
             label_visibility="collapsed"
         )
         
@@ -981,6 +1257,13 @@ def main_app():
             """, unsafe_allow_html=True)
 
     elif menu_opcao == "Despensa":
+        refresh_estoque_neon()
+
+        if st.button("🔄 Atualizar Estoque", use_container_width=False):
+            refresh_estoque_neon(force=True)
+            st.success("Estoque sincronizado com o banco de dados.")
+            st.rerun()
+
         col_entrada, col_catalogo = st.columns([2, 1])
         
         with col_catalogo:
@@ -989,12 +1272,20 @@ def main_app():
                 novo_nome = st.text_input("Nome")
                 tipo_item = st.radio("Regra:", ["Item Avulso/Extra", "Obrigatório na Cesta"])
                 qtd_cesta = st.number_input("Qtd por Cesta", min_value=1, value=1) if "Obrigatório" in tipo_item else 0
+                categoria = "Cesta" if "Obrigatório" in tipo_item else "Avulso"
                 
                 if st.form_submit_button("Adicionar", type="primary", use_container_width=True):
                     if novo_nome:
                         novo_id = st.session_state.db_catalogo['id_item'].max() + 1 if not st.session_state.db_catalogo.empty else 1
-                        novo_item = {'id_item': novo_id, 'nome': novo_nome, 'qtd_por_cesta': qtd_cesta}
+                        novo_item = {
+                            'id_item': novo_id,
+                            'nome': novo_nome,
+                            'qtd_por_cesta': qtd_cesta,
+                            'categoria': categoria
+                        }
                         st.session_state.db_catalogo = pd.concat([st.session_state.db_catalogo, pd.DataFrame([novo_item])], ignore_index=True)
+                        if salvar_item_catalogo_neon(novo_item):
+                            refresh_estoque_neon(force=True)
                         st.success("Adicionado!")
                         st.rerun()
 
@@ -1008,8 +1299,16 @@ def main_app():
                 
                 if st.form_submit_button("Guardar Estoque", use_container_width=True):
                     id_item_escolhido = st.session_state.db_catalogo[st.session_state.db_catalogo['nome'] == item_selecionado]['id_item'].values[0]
-                    novo_lote = {'id_lote': len(st.session_state.db_lotes)+1, 'id_item': id_item_escolhido, 'quantidade': qtd, 'vencimento': venc}
+                    novo_lote = {
+                        'id_lote': len(st.session_state.db_lotes) + 1,
+                        'id_item': id_item_escolhido,
+                        'nome_item': item_selecionado,
+                        'quantidade': qtd,
+                        'vencimento': venc
+                    }
                     st.session_state.db_lotes = pd.concat([st.session_state.db_lotes, pd.DataFrame([novo_lote])], ignore_index=True)
+                    if salvar_lote_neon(novo_lote):
+                        refresh_estoque_neon(force=True)
                     st.success("Registado!")
                     st.rerun()
 
@@ -1027,6 +1326,10 @@ def main_app():
     elif menu_opcao == "Famílias":
         c1, c2 = st.columns([3, 1])
         c1.markdown("<div class='title-modern'>Fila de Espera</div>", unsafe_allow_html=True)
+        if st.button("🔄 Atualizar Famílias", use_container_width=False):
+            refresh_estoque_neon(force=True)
+            st.success("Dados sincronizados com o banco de dados.")
+            st.rerun()
         
         with st.expander("➕ Cadastrar Nova Família", expanded=True):
             with st.form("form_familia", clear_on_submit=True):
@@ -1239,6 +1542,7 @@ def main_app():
                                                 descricao_itens = ", ".join(itens_entregues)
                                                 nova_entrega = {
                                                     'id_entrega': len(st.session_state.db_entregas) + 1,
+                                                    'id_familia': fam['id_familia'],
                                                     'nome_familia': fam['nome'],
                                                     'data': datetime.date.today(),
                                                     'tipo': f"Avulso: {descricao_itens}"
@@ -1257,6 +1561,58 @@ def main_app():
                                         st.rerun()
         else:
             st.info("Nenhuma família cadastrada.")
+
+    elif menu_opcao == "Usuários":
+        st.markdown("<div class='title-modern'>Gerenciamento de Usuários</div>", unsafe_allow_html=True)
+        st.markdown("<p class='subtitle-modern'>Cadastre e gerencie perfis de acesso para o sistema.</p>", unsafe_allow_html=True)
+
+        with st.expander("➕ Cadastrar Novo Usuário", expanded=True):
+            with st.form("form_usuario", clear_on_submit=True):
+                nome_novo = st.text_input("Nome Completo")
+                login_novo = st.text_input("Login / Usuário")
+                senha_nova = st.text_input("Senha", type="password")
+                perfil_novo = st.selectbox("Perfil", ["master", "admin", "voluntario"])
+                ativo_novo = st.checkbox("Ativo", value=True)
+
+                if st.form_submit_button("Cadastrar Usuário", type="primary", use_container_width=True):
+                    if nome_novo and login_novo and senha_nova:
+                        novo_usuario = {
+                            'login': login_novo.lower().strip(),
+                            'nome': nome_novo.strip(),
+                            'senha': senha_nova,
+                            'perfil': perfil_novo,
+                            'ativo': ativo_novo
+                        }
+                        if salvar_usuario_neon(novo_usuario):
+                            st.success("✅ Usuário cadastrado com sucesso.")
+                        else:
+                            st.error("Falha ao cadastrar usuário. Verifique se o login já existe.")
+                        st.rerun()
+                    else:
+                        st.error("Preencha todos os campos obrigatórios.")
+
+        st.markdown("---")
+        st.markdown("### Usuários cadastrados")
+        df_usuarios = carregar_usuarios_neon()
+        if df_usuarios is not None and not df_usuarios.empty:
+            st.dataframe(df_usuarios[['id_usuario', 'login', 'nome', 'perfil', 'ativo']], use_container_width=True, hide_index=True)
+            for _, usuario in df_usuarios.iterrows():
+                col1, col2 = st.columns([4, 1])
+                with col1:
+                    st.markdown(f"**{usuario['nome']}** (<code>{usuario['login']}</code>) — {usuario['perfil']} — {'Ativo' if usuario['ativo'] else 'Inativo'}")
+                with col2:
+                    if usuario['ativo']:
+                        if st.button(f"Desativar", key=f"desativar_usuario_{usuario['id_usuario']}", use_container_width=True):
+                            set_usuario_ativo_neon(usuario['id_usuario'], False)
+                            st.success("Usuário desativado.")
+                            st.rerun()
+                    else:
+                        if st.button(f"Ativar", key=f"ativar_usuario_{usuario['id_usuario']}", use_container_width=True):
+                            set_usuario_ativo_neon(usuario['id_usuario'], True)
+                            st.success("Usuário ativado.")
+                            st.rerun()
+        else:
+            st.warning("Nenhum usuário cadastrado no sistema.")
 
     elif menu_opcao == "Voluntários":
         st.markdown("<div class='title-modern'>Gestão de Voluntários</div>", unsafe_allow_html=True)
