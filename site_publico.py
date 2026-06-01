@@ -5,7 +5,7 @@ import datetime
 import hashlib
 import logging
 import requests
-import plotly.express as px
+import matplotlib.pyplot as plt
 from sqlalchemy import create_engine
 
 logging.basicConfig(level=logging.INFO)
@@ -347,8 +347,11 @@ def main():
             df_falta_chart = df_falta.sort_values(by='Faltam para 1 cesta', ascending=False).head(8)
             col1, col2 = st.columns([1, 1])
             with col1:
-                fig_pie = px.pie(df_falta_chart, values='Faltam para 1 cesta', names='Item')
-                st.plotly_chart(fig_pie, use_container_width=True)
+                fig, ax = plt.subplots(figsize=(8, 6))
+                ax.pie(df_falta_chart['Faltam para 1 cesta'], labels=df_falta_chart['Item'], autopct='%1.1f%%', startangle=90)
+                ax.set_title('Distribuição de itens faltantes')
+                st.pyplot(fig)
+                plt.close(fig)
             with col2:
                 st.markdown("#### Detalhes:")
                 for idx, row in df_falta_chart.iterrows():
@@ -371,8 +374,11 @@ def main():
             df_estoque_chart = df_estoque.head(8)
             col1, col2 = st.columns([1, 1])
             with col1:
-                fig_pie = px.pie(df_estoque_chart, values='Quantidade disponível', names='Produto')
-                st.plotly_chart(fig_pie, use_container_width=True)
+                fig, ax = plt.subplots(figsize=(8, 6))
+                ax.pie(df_estoque_chart['Quantidade disponível'], labels=df_estoque_chart['Produto'], autopct='%1.1f%%', startangle=90)
+                ax.set_title('Produtos em estoque')
+                st.pyplot(fig)
+                plt.close(fig)
             with col2:
                 st.markdown("#### Produtos em estoque:")
                 for idx, row in df_estoque_chart.iterrows():
@@ -395,8 +401,11 @@ def main():
             df_falta_chart = df_falta.sort_values(by='Faltam para 1 cesta', ascending=False).head(8)
             col1, col2 = st.columns([1, 1])
             with col1:
-                fig_pie = px.pie(df_falta_chart, values='Faltam para 1 cesta', names='Item')
-                st.plotly_chart(fig_pie, use_container_width=True)
+                fig, ax = plt.subplots(figsize=(8, 6))
+                ax.pie(df_falta_chart['Faltam para 1 cesta'], labels=df_falta_chart['Item'], autopct='%1.1f%%', startangle=90)
+                ax.set_title('Itens que precisamos')
+                st.pyplot(fig)
+                plt.close(fig)
             with col2:
                 st.markdown("#### Itens críticos:")
                 for idx, row in df_falta_chart.iterrows():
