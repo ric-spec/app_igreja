@@ -86,6 +86,26 @@ def validar_usuario(email, senha):
     return None
 
 
+def salvar_usuario_publico(dados_usuario):
+    engine = get_engine()
+    if engine is None:
+        return False
+
+    try:
+        dados_usuario = dados_usuario.copy()
+        dados_usuario.pop("id_usuario", None)
+        senha = dados_usuario.pop("senha", None)
+        dados_usuario["senha_hash"] = hash_password(senha or "")
+        dados_usuario["login"] = dados_usuario.get("login", "").lower().strip()
+        dados_usuario["perfil"] = dados_usuario.get("perfil", "publico")
+        df = pd.DataFrame([dados_usuario])
+        df.to_sql("usuarios", engine, if_exists="append", index=False)
+        return True
+    except Exception as e:
+        logging.warning(f"Erro ao salvar usuário público no Neon: {e}")
+        return False
+
+
 def buscar_endereco_viacep(cep):
     cep_limpo = "".join(filter(str.isdigit, cep))
     if len(cep_limpo) != 8:
@@ -304,25 +324,61 @@ def main():
     if 'public_authenticated' not in st.session_state:
         st.session_state.public_authenticated = False
         st.session_state.public_user_login = None
+    if 'public_request_type' not in st.session_state:
+        st.session_state.public_request_type = None
 
     if not st.session_state.public_authenticated:
-        st.markdown("<p>Para acessar o cadastro de família, faça login com seu e-mail e senha.</p>", unsafe_allow_html=True)
-        with st.form("form_login_familia"):
-            email = st.text_input("E-mail de acesso (*)", placeholder="seu@email.com")
-            senha = st.text_input("Senha (*)", type="password")
-            login_submit = st.form_submit_button("Entrar")
-            if login_submit:
-                if not email.strip() or not senha.strip():
-                    st.error("Informe e-mail e senha para continuar.")
-                else:
-                    usuario_info = validar_usuario(email, senha)
-                    if usuario_info:
-                        st.session_state.public_authenticated = True
-                        st.session_state.public_user_login = usuario_info['login']
-                        st.success("Login realizado com sucesso.")
-                        st.experimental_rerun()
+        st.markdown("<p>Para acessar o cadastro de família e solicitar itens, faça login ou cadastre-se.</p>", unsafe_allow_html=True)
+        acesso_opcao = st.radio("Escolha uma opção:", ["Entrar", "Cadastrar"], horizontal=True)
+
+        if acesso_opcao == "Entrar":
+            with st.form("form_login_familia"):
+                email = st.text_input("E-mail de acesso (*)", placeholder="seu@email.com")
+                senha = st.text_input("Senha (*)", type="password")
+                login_submit = st.form_submit_button("Entrar")
+                if login_submit:
+                    if not email.strip() or not senha.strip():
+                        st.error("Informe e-mail e senha para continuar.")
                     else:
-                        st.error("Credenciais inválidas. Verifique e tente novamente.")
+                        usuario_info = validar_usuario(email, senha)
+                        if usuario_info:
+                            st.session_state.public_authenticated = True
+                            st.session_state.public_user_login = usuario_info["login"]
+                            st.success("Login realizado com sucesso.")
+                            st.experimental_rerun()
+                        else:
+                            st.error("Credenciais inválidas. Verifique e tente novamente.")
+
+        else:
+            with st.form("form_cadastrar_publico"):
+                nome_cadastro = st.text_input("Nome completo (*)")
+                email_cadastro = st.text_input("E-mail de acesso (*)", placeholder="seu@email.com")
+                senha_cadastro = st.text_input("Senha (*)", type="password")
+                senha_confirm = st.text_input("Confirme a senha (*)", type="password")
+                pedido_opcao = st.selectbox("O que você deseja solicitar?", ["Cesta Básica", "Itens do estoque"])
+                cadastrar_submit = st.form_submit_button("Cadastrar e continuar")
+
+                if cadastrar_submit:
+                    if not nome_cadastro.strip() or not email_cadastro.strip() or not senha_cadastro.strip() or not senha_confirm.strip():
+                        st.error("Preencha todos os campos obrigatórios para cadastrar.")
+                    elif senha_cadastro != senha_confirm:
+                        st.error("As senhas não conferem.")
+                    else:
+                        usuario_novo = {
+                            "login": email_cadastro.lower().strip(),
+                            "nome": nome_cadastro.strip(),
+                            "senha": senha_cadastro,
+                            "perfil": "publico",
+                            "ativo": True,
+                        }
+                        if salvar_usuario_publico(usuario_novo):
+                            st.session_state.public_authenticated = True
+                            st.session_state.public_user_login = usuario_novo["login"]
+                            st.session_state.public_request_type = pedido_opcao
+                            st.success("Cadastro realizado com sucesso. Você já pode continuar com o pedido.")
+                            st.experimental_rerun()
+                        else:
+                            st.error("Não foi possível cadastrar. Verifique se o e-mail já está em uso.")
     else:
         st.markdown(f"<div style='margin-bottom: 16px; color: #166534;'>Acesso liberado para <strong>{st.session_state.public_user_login}</strong>. <a href='#' id='logout-link'>Sair</a></div>", unsafe_allow_html=True)
         if st.button("Sair do cadastro", key="logout_button"):
@@ -343,8 +399,10 @@ def main():
             cep = col_cep.text_input("CEP (Somente números) *", max_chars=8)
             numero = st.text_input("Número e Complemento *")
 
-            st.markdown("##### Tipo de Atendimento")
-            tipo_atendimento = st.selectbox("Atendimento", ["Contínuo", "Esporádico"])
+            st.markdown("##### Pedido")
+            pedido_tipo_options = ["Cesta Básica", "Itens do estoque"]
+            pedido_index = pedido_tipo_options.index(st.session_state.public_request_type) if st.session_state.public_request_type in pedido_tipo_options else 0
+            pedido_tipo = st.selectbox("Selecione o que deseja solicitar", pedido_tipo_options, index=pedido_index)
 
             st.markdown("##### 📍 Coordenadas (Opcional - use se o mapa automático falhar)")
             st.caption("Dica: No Google Maps, clique com o botão direito no local e copie os números em formato -23.5500, -46.6330")
@@ -384,7 +442,7 @@ def main():
                         "dependentes": dep,
                         "prioridade": prio.split()[0],
                         "telefone": telefone,
-                        "atendimento_tipo": tipo_atendimento,
+                        "atendimento_tipo": pedido_tipo,
                         "cep": cep,
                         "endereco": endereco_display,
                         "lat": lat,
