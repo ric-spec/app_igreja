@@ -44,9 +44,14 @@ st.markdown(
 def get_engine():
     try:
         conn_url = st.secrets["postgres"]["url"]
-        return create_engine(conn_url, pool_pre_ping=True, echo=False)
+        engine = create_engine(conn_url, pool_pre_ping=True, echo=False)
+        if hasattr(st, "session_state"):
+            st.session_state.neon_connection_error = None
+        return engine
     except Exception as e:
         logging.warning(f"Erro ao obter engine Neon: {e}")
+        if hasattr(st, "session_state"):
+            st.session_state.neon_connection_error = str(e)
         return None
 
 
@@ -205,8 +210,15 @@ def montar_dashboard(df_catalogo, df_lotes):
 def main():
     contato = carregar_contato()
 
+    if 'neon_connection_error' not in st.session_state:
+        st.session_state.neon_connection_error = None
+
     st.markdown("<div class='big-title'>AJUDA SOCIAL</div>", unsafe_allow_html=True)
     st.markdown("<div class='subtitle'>Página de apoio para famílias que precisam de cesta básica e informação direta.</div>", unsafe_allow_html=True)
+
+    if st.session_state.neon_connection_error:
+        st.error(f"❌ Erro ao conectar ao Neon: {st.session_state.neon_connection_error}")
+        st.warning("Verifique seu arquivo de secrets e a URL de conexão PostgreSQL do Neon.")
 
     st.markdown(
         """
