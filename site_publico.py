@@ -8,12 +8,12 @@ from sqlalchemy import create_engine
 
 logging.basicConfig(level=logging.INFO)
 
-DEFAULT_CONTACT_PHONE = "(32) 98888-1234"
+DEFAULT_CONTACT_PHONE = "(032) 98719-4140"
 DEFAULT_CONTACT_EMAIL = "contato@igreja.org"
-DEFAULT_CONTACT_WHATSAPP = "(32) 98888-1234"
+DEFAULT_CONTACT_WHATSAPP = "(032) 98719-4140"
 
 st.set_page_config(
-    page_title="Ajuda Social - Cadastro Família",
+    page_title="Projeto Elos de acolhimento à famílias",
     page_icon="🏠",
     layout="wide"
 )
@@ -21,15 +21,20 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-        .big-title { font-size: 42px; font-weight: 800; margin-bottom: 4px; }
-        .subtitle { font-size: 18px; color: #525252; margin-top: 0; margin-bottom: 18px; }
-        .card { background: #ffffff; border-radius: 18px; padding: 24px; box-shadow: 0 15px 40px rgba(0,0,0,0.06); }
-        .metric-card { border-left: 4px solid #2563eb; }
-        .help-box { background: #f8fafc; border-radius: 14px; padding: 18px; margin-top: 16px; }
+        body {
+            background: #f7f2eb;
+        }
+        .big-title { font-size: 42px; font-weight: 800; margin-bottom: 4px; color: #2d5533; }
+        .subtitle { font-size: 18px; color: #5f5a4d; margin-top: 0; margin-bottom: 18px; }
+        .card { background: #fffdf7; border-radius: 18px; padding: 24px; box-shadow: 0 15px 40px rgba(83, 71, 58, 0.08); }
+        .metric-card { border-left: 6px solid #8a5a2b; }
+        .help-box { background: #fff7ed; border-radius: 14px; padding: 18px; margin-top: 16px; border: 1px solid #eed6c3; }
         .item-status { font-weight: 700; }
-        .green { color: #166534; }
-        .orange { color: #b45309; }
-        .red { color: #b91c1c; }
+        .green { color: #196f3d; }
+        .orange { color: #a35418; }
+        .red { color: #912018; }
+        a { color: #7b4d29; text-decoration: none; }
+        a:hover { text-decoration: underline; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -202,6 +207,38 @@ def main():
 
     st.markdown("<div class='big-title'>AJUDA SOCIAL</div>", unsafe_allow_html=True)
     st.markdown("<div class='subtitle'>Página de apoio para famílias que precisam de cesta básica e informação direta.</div>", unsafe_allow_html=True)
+
+    st.markdown(
+        """
+        ## Ministério Elos
+
+        ### Inspirado em Atos 4. Conectado pelo Amor. Movido pelo Serviço.
+        O Ministério Elos é uma iniciativa social da igreja dedicada a levar cuidado, dignidade e esperança às pessoas por meio da arrecadação e distribuição de itens essenciais.
+
+        Inspirados pelo exemplo da igreja primitiva descrito em Atos 4, acreditamos que a fé deve se manifestar em ações concretas de amor ao próximo. Assim como os primeiros cristãos compartilhavam seus recursos para que ninguém passasse necessidade, buscamos ser instrumentos de provisão, solidariedade e transformação em nossa comunidade.
+
+        ### Nossa Missão
+        Promover ações sociais que atendam necessidades básicas de famílias e indivíduos, demonstrando o amor de Cristo através do cuidado prático e do serviço ao próximo.
+
+        ### Nossa Visão
+        Ser uma ponte entre aqueles que podem ajudar e aqueles que necessitam de apoio, fortalecendo a comunidade por meio da generosidade, da compaixão e da unidade.
+
+        ### O Que Fazemos
+
+        - Arrecadação e distribuição de cestas básicas.
+        - Doação de roupas, calçados e cobertores.
+        - Entrega de materiais de higiene pessoal.
+        - Apoio emergencial a famílias em situação de vulnerabilidade.
+        - Mobilização de voluntários para ações comunitárias.
+        - Desenvolvimento de campanhas solidárias ao longo do ano.
+
+        ### Nossa Base Bíblica
+        "Não havia entre eles necessitado algum." — Atos 4:34
+
+        Este versículo expressa a essência do Ministério Elos: unir pessoas, recursos e propósito para que o amor de Deus seja demonstrado de forma prática, alcançando aqueles que mais precisam.
+        """,
+        unsafe_allow_html=True,
+    )
 
     st.markdown(
         f"""
