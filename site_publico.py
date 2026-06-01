@@ -28,7 +28,9 @@ st.markdown(
         .subtitle { font-size: 18px; color: #5f5a4d; margin-top: 0; margin-bottom: 18px; }
         .card { background: #fffdf7; border-radius: 18px; padding: 24px; box-shadow: 0 15px 40px rgba(83, 71, 58, 0.08); }
         .metric-card { border-left: 6px solid #8a5a2b; }
-        .help-box { background: #fff7ed; border-radius: 14px; padding: 18px; margin-top: 16px; border: 1px solid #eed6c3; }
+        .help-box { background: #f6e2c4; border-radius: 14px; padding: 22px; margin-top: 16px; border: 1px solid #d9b79d; color: #4d3a28; }
+        .help-box p, .help-box a { color: #4d3a28; }
+        .help-box strong { color: #3e2e21; }
         .item-status { font-weight: 700; }
         .green { color: #196f3d; }
         .orange { color: #a35418; }
