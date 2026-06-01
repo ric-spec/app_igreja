@@ -259,17 +259,17 @@ def main():
     col1, col2 = st.columns([2, 1])
     with col1:
         st.markdown("<div class='card metric-card'>", unsafe_allow_html=True)
-        st.markdown(f"<h3 style='margin-bottom: 8px;'>Cestas possíveis</h3>")
-        st.markdown(f"<div style='font-size: 36px; font-weight: 700; color: #1d4ed8;'>{cestas_possiveis}</div>")
+        st.markdown(f"<h3 style='margin-bottom: 8px;'>Cestas possíveis</h3>", unsafe_allow_html=True)
+        st.markdown(f"<div style='font-size: 36px; font-weight: 700; color: #1d4ed8;'>{cestas_possiveis}</div>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
     with col2:
         st.markdown("<div class='card metric-card'>", unsafe_allow_html=True)
-        st.markdown("<h3 style='margin-bottom: 8px;'>Última atualização</h3>")
-        st.markdown(f"<div style='font-size: 22px; font-weight: 700;'>{datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}</div>")
+        st.markdown("<h3 style='margin-bottom: 8px;'>Última atualização</h3>", unsafe_allow_html=True)
+        st.markdown(f"<div style='font-size: 22px; font-weight: 700;'>{datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}</div>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
-    st.markdown("<h3>Itens que faltam na cesta básica</h3>")
+    st.markdown("<h3>Itens que faltam na cesta básica</h3>", unsafe_allow_html=True)
     if df_falta.empty:
         st.info("Não há itens essenciais cadastrados ainda.")
     else:
@@ -277,7 +277,7 @@ def main():
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
-    st.markdown("<h3>Estoque atual</h3>")
+    st.markdown("<h3>Estoque atual</h3>", unsafe_allow_html=True)
     if df_estoque.empty:
         st.info("Não há estoque registrado no momento.")
     else:
@@ -285,7 +285,7 @@ def main():
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
-    st.markdown("<h3>Cadastro de família</h3>")
+    st.markdown("<h3>Cadastro de família</h3>", unsafe_allow_html=True)
 
     if 'public_authenticated' not in st.session_state:
         st.session_state.public_authenticated = False
