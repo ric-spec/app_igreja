@@ -248,59 +248,6 @@ def main():
     if 'neon_connection_error' not in st.session_state:
         st.session_state.neon_connection_error = None
 
-    st.markdown("<div class='big-title'>AJUDA SOCIAL</div>", unsafe_allow_html=True)
-    st.markdown("<div class='subtitle'>Página de apoio para famílias que precisam de cesta básica e informação direta.</div>", unsafe_allow_html=True)
-
-    if st.session_state.neon_connection_error:
-        st.error(f"❌ Erro ao conectar ao Neon: {st.session_state.neon_connection_error}")
-        st.warning("Verifique se a URL está em st.secrets['postgres']['url'] ou na variável de ambiente NEON_URL / DATABASE_URL / POSTGRES_URL.")
-        if st.session_state.get('neon_connection_url'):
-            st.info(f"Host de conexão usado: {st.session_state.neon_connection_url.split('@')[1].split('/')[0]}")
-
-    st.markdown(
-        """
-        ## Ministério Elos
-
-        ### Inspirado em Atos 4. Conectado pelo Amor. Movido pelo Serviço.
-        O Ministério Elos é uma iniciativa social da igreja dedicada a levar cuidado, dignidade e esperança às pessoas por meio da arrecadação e distribuição de itens essenciais.
-
-        Inspirados pelo exemplo da igreja primitiva descrito em Atos 4, acreditamos que a fé deve se manifestar em ações concretas de amor ao próximo. Assim como os primeiros cristãos compartilhavam seus recursos para que ninguém passasse necessidade, buscamos ser instrumentos de provisão, solidariedade e transformação em nossa comunidade.
-
-        ### Nossa Missão
-        Promover ações sociais que atendam necessidades básicas de famílias e indivíduos, demonstrando o amor de Cristo através do cuidado prático e do serviço ao próximo.
-
-        ### Nossa Visão
-        Ser uma ponte entre aqueles que podem ajudar e aqueles que necessitam de apoio, fortalecendo a comunidade por meio da generosidade, da compaixão e da unidade.
-
-        ### O Que Fazemos
-
-        - Arrecadação e distribuição de cestas básicas.
-        - Doação de roupas, calçados e cobertores.
-        - Entrega de materiais de higiene pessoal.
-        - Apoio emergencial a famílias em situação de vulnerabilidade.
-        - Mobilização de voluntários para ações comunitárias.
-        - Desenvolvimento de campanhas solidárias ao longo do ano.
-
-        ### Nossa Base Bíblica
-        "Não havia entre eles necessitado algum." — Atos 4:34
-
-        Este versículo expressa a essência do Ministério Elos: unir pessoas, recursos e propósito para que o amor de Deus seja demonstrado de forma prática, alcançando aqueles que mais precisam.
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        f"""
-        <div class='help-box'>
-            <p><strong>Contato rápido:</strong></p>
-            <p>Telefone: <a href='tel:{contato['telefone']}'>{contato['telefone']}</a></p>
-            <p>WhatsApp: <a href='https://wa.me/{contato['whatsapp'].replace('(', '').replace(')', '').replace(' ', '').replace('-', '')}' target='_blank'>{contato['whatsapp']}</a></p>
-            <p>E-mail: <a href='mailto:{contato['email']}'>{contato['email']}</a></p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
     df_catalogo = carregar_catalogo_neon()
     df_lotes = carregar_lotes_neon()
     df_falta, df_estoque, cestas_possiveis = montar_dashboard(df_catalogo, df_lotes)
@@ -311,6 +258,12 @@ def main():
     itens_sem_estoque = 0 if df_lotes.empty else int((df_estoque['Quantidade disponível'] == 0).sum())
 
     vizao_tab, estoque_tab, contribuir_tab, cadastro_tab = st.tabs(["Visão Geral", "Estoque", "Contribuir", "Cadastro"])
+
+    if st.session_state.neon_connection_error:
+        st.error(f"❌ Erro ao conectar ao Neon: {st.session_state.neon_connection_error}")
+        st.warning("Verifique se a URL está em st.secrets['postgres']['url'] ou na variável de ambiente NEON_URL / DATABASE_URL / POSTGRES_URL.")
+        if st.session_state.get('neon_connection_url'):
+            st.info(f"Host de conexão usado: {st.session_state.neon_connection_url.split('@')[1].split('/')[0]}")
 
     with vizao_tab:
         st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
@@ -515,6 +468,54 @@ def main():
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div class='help-box'>Caso tenha dificuldade para preencher o formulário, mande uma mensagem pelo WhatsApp ou ligue para o número acima.</div>", unsafe_allow_html=True)
+
+    st.markdown("<div style='margin-top: 48px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='big-title'>AJUDA SOCIAL</div>", unsafe_allow_html=True)
+    st.markdown("<div class='subtitle'>Página de apoio para famílias que precisam de cesta básica e informação direta.</div>", unsafe_allow_html=True)
+
+    st.markdown(
+        """
+        ## Ministério Elos
+
+        ### Inspirado em Atos 4. Conectado pelo Amor. Movido pelo Serviço.
+        O Ministério Elos é uma iniciativa social da igreja dedicada a levar cuidado, dignidade e esperança às pessoas por meio da arrecadação e distribuição de itens essenciais.
+
+        Inspirados pelo exemplo da igreja primitiva descrito em Atos 4, acreditamos que a fé deve se manifestar em ações concretas de amor ao próximo. Assim como os primeiros cristãos compartilhavam seus recursos para que ninguém passasse necessidade, buscamos ser instrumentos de provisão, solidariedade e transformação em nossa comunidade.
+
+        ### Nossa Missão
+        Promover ações sociais que atendam necessidades básicas de famílias e indivíduos, demonstrando o amor de Cristo através do cuidado prático e do serviço ao próximo.
+
+        ### Nossa Visão
+        Ser uma ponte entre aqueles que podem ajudar e aqueles que necessitam de apoio, fortalecendo a comunidade por meio da generosidade, da compaixão e da unidade.
+
+        ### O Que Fazemos
+
+        - Arrecadação e distribuição de cestas básicas.
+        - Doação de roupas, calçados e cobertores.
+        - Entrega de materiais de higiene pessoal.
+        - Apoio emergencial a famílias em situação de vulnerabilidade.
+        - Mobilização de voluntários para ações comunitárias.
+        - Desenvolvimento de campanhas solidárias ao longo do ano.
+
+        ### Nossa Base Bíblica
+        "Não havia entre eles necessitado algum." — Atos 4:34
+
+        Este versículo expressa a essência do Ministério Elos: unir pessoas, recursos e propósito para que o amor de Deus seja demonstrado de forma prática, alcançando aqueles que mais precisam.
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        f"""
+        <div class='help-box'>
+            <p><strong>Contato rápido:</strong></p>
+            <p>Telefone: <a href='tel:{contato['telefone']}'>{contato['telefone']}</a></p>
+            <p>WhatsApp: <a href='https://wa.me/{contato['whatsapp'].replace('(', '').replace(')', '').replace(' ', '').replace('-', '')}' target='_blank'>{contato['whatsapp']}</a></p>
+            <p>E-mail: <a href='mailto:{contato['email']}'>{contato['email']}</a></p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 if __name__ == "__main__":
