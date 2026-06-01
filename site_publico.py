@@ -305,18 +305,6 @@ def main():
     df_lotes = carregar_lotes_neon()
     df_falta, df_estoque, cestas_possiveis = montar_dashboard(df_catalogo, df_lotes)
 
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        st.markdown("<div class='card metric-card'>", unsafe_allow_html=True)
-        st.markdown(f"<h3 style='margin-bottom: 8px;'>Cestas possíveis</h3>", unsafe_allow_html=True)
-        st.markdown(f"<div style='font-size: 36px; font-weight: 700; color: #1d4ed8;'>{cestas_possiveis}</div>", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-    with col2:
-        st.markdown("<div class='card metric-card'>", unsafe_allow_html=True)
-        st.markdown("<h3 style='margin-bottom: 8px;'>Última atualização</h3>", unsafe_allow_html=True)
-        st.markdown(f"<div style='font-size: 22px; font-weight: 700;'>{datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}</div>", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-
     total_itens_catalogo = len(df_catalogo)
     total_itens_criticos = 0 if df_falta.empty else df_falta['Faltam para 1 cesta'].gt(0).sum()
     total_estoque = int(df_lotes['quantidade'].sum()) if not df_lotes.empty else 0
