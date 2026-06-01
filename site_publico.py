@@ -5,6 +5,7 @@ import datetime
 import hashlib
 import logging
 import requests
+import plotly.express as px
 from sqlalchemy import create_engine
 
 logging.basicConfig(level=logging.INFO)
@@ -260,17 +261,19 @@ def main():
     total_estoque = int(df_lotes['quantidade'].sum()) if not df_lotes.empty else 0
     itens_sem_estoque = 0 if df_lotes.empty else int((df_estoque['Quantidade disponível'] == 0).sum())
 
-    # Navegação horizontal no topo direito
-    col_title, col_nav = st.columns([3, 1])
-    with col_title:
-        st.markdown("<div class='big-title'>AJUDA SOCIAL</div>", unsafe_allow_html=True)
-    with col_nav:
-        st.session_state.current_page = st.selectbox(
-            "Navegação",
-            ["AJUDA SOCIAL", "Visão Geral", "Estoque", "Contribuir", "Cadastro"],
-            index=0 if st.session_state.current_page == "AJUDA SOCIAL" else ["AJUDA SOCIAL", "Visão Geral", "Estoque", "Contribuir", "Cadastro"].index(st.session_state.current_page),
-            label_visibility="collapsed"
-        )
+    # Título
+    st.markdown("<div class='big-title'>AJUDA SOCIAL</div>", unsafe_allow_html=True)
+    
+    # Navegação horizontal com botões
+    col_nav = st.columns(5)
+    pages = ["AJUDA SOCIAL", "Visão Geral", "Estoque", "Contribuir", "Cadastro"]
+    
+    for idx, page in enumerate(pages):
+        with col_nav[idx]:
+            if st.button(page, use_container_width=True, key=f"nav_{page}"):
+                st.session_state.current_page = page
+    
+    st.markdown("---")
 
     if st.session_state.neon_connection_error:
         st.error(f"❌ Erro ao conectar ao Neon: {st.session_state.neon_connection_error}")
@@ -344,7 +347,8 @@ def main():
             df_falta_chart = df_falta.sort_values(by='Faltam para 1 cesta', ascending=False).head(8)
             col1, col2 = st.columns([1, 1])
             with col1:
-                st.pie_chart(df_falta_chart.set_index('Item')['Faltam para 1 cesta'])
+                fig_pie = px.pie(df_falta_chart, values='Faltam para 1 cesta', names='Item')
+                st.plotly_chart(fig_pie, use_container_width=True)
             with col2:
                 st.markdown("#### Detalhes:")
                 for idx, row in df_falta_chart.iterrows():
@@ -364,14 +368,15 @@ def main():
             st.success("Nenhum estoque registrado no momento.")
         else:
             st.markdown("<h3 style='margin-top: 32px;'>Distribuição de produtos em estoque</h3>", unsafe_allow_html=True)
-            df_estoque_chart = df_estoque.head(8).set_index('Produto')['Quantidade disponível']
+            df_estoque_chart = df_estoque.head(8)
             col1, col2 = st.columns([1, 1])
             with col1:
-                st.pie_chart(df_estoque_chart)
+                fig_pie = px.pie(df_estoque_chart, values='Quantidade disponível', names='Produto')
+                st.plotly_chart(fig_pie, use_container_width=True)
             with col2:
                 st.markdown("#### Produtos em estoque:")
-                for produto, qtd in df_estoque_chart.items():
-                    st.write(f"• **{produto}**: {int(qtd)} unidades")
+                for idx, row in df_estoque_chart.iterrows():
+                    st.write(f"• **{row['Produto']}**: {int(row['Quantidade disponível'])} unidades")
 
     # Aba Contribuir
     elif st.session_state.current_page == "Contribuir":
@@ -390,7 +395,8 @@ def main():
             df_falta_chart = df_falta.sort_values(by='Faltam para 1 cesta', ascending=False).head(8)
             col1, col2 = st.columns([1, 1])
             with col1:
-                st.pie_chart(df_falta_chart.set_index('Item')['Faltam para 1 cesta'])
+                fig_pie = px.pie(df_falta_chart, values='Faltam para 1 cesta', names='Item')
+                st.plotly_chart(fig_pie, use_container_width=True)
             with col2:
                 st.markdown("#### Itens críticos:")
                 for idx, row in df_falta_chart.iterrows():

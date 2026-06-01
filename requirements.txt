@@ -7,3 +7,4 @@ folium
 streamlit-folium
 sqlalchemy
 psycopg2-binary
+plotly
