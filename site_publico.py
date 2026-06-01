@@ -247,6 +247,9 @@ def main():
 
     if 'neon_connection_error' not in st.session_state:
         st.session_state.neon_connection_error = None
+    
+    if 'current_page' not in st.session_state:
+        st.session_state.current_page = "AJUDA SOCIAL"
 
     df_catalogo = carregar_catalogo_neon()
     df_lotes = carregar_lotes_neon()
@@ -257,7 +260,17 @@ def main():
     total_estoque = int(df_lotes['quantidade'].sum()) if not df_lotes.empty else 0
     itens_sem_estoque = 0 if df_lotes.empty else int((df_estoque['Quantidade disponível'] == 0).sum())
 
-    vizao_tab, estoque_tab, contribuir_tab, cadastro_tab = st.tabs(["Visão Geral", "Estoque", "Contribuir", "Cadastro"])
+    # Navegação horizontal no topo direito
+    col_title, col_nav = st.columns([3, 1])
+    with col_title:
+        st.markdown("<div class='big-title'>AJUDA SOCIAL</div>", unsafe_allow_html=True)
+    with col_nav:
+        st.session_state.current_page = st.selectbox(
+            "Navegação",
+            ["AJUDA SOCIAL", "Visão Geral", "Estoque", "Contribuir", "Cadastro"],
+            index=0 if st.session_state.current_page == "AJUDA SOCIAL" else ["AJUDA SOCIAL", "Visão Geral", "Estoque", "Contribuir", "Cadastro"].index(st.session_state.current_page),
+            label_visibility="collapsed"
+        )
 
     if st.session_state.neon_connection_error:
         st.error(f"❌ Erro ao conectar ao Neon: {st.session_state.neon_connection_error}")
@@ -265,7 +278,58 @@ def main():
         if st.session_state.get('neon_connection_url'):
             st.info(f"Host de conexão usado: {st.session_state.neon_connection_url.split('@')[1].split('/')[0]}")
 
-    with vizao_tab:
+
+    # Conteúdo AJUDA SOCIAL (página principal)
+    if st.session_state.current_page == "AJUDA SOCIAL":
+        st.markdown("<div class='subtitle'>Página de apoio para famílias que precisam de cesta básica e informação direta.</div>", unsafe_allow_html=True)
+        
+        st.markdown(
+            """
+            ## Ministério Elos
+
+            ### Inspirado em Atos 4. Conectado pelo Amor. Movido pelo Serviço.
+            O Ministério Elos é uma iniciativa social da igreja dedicada a levar cuidado, dignidade e esperança às pessoas por meio da arrecadação e distribuição de itens essenciais.
+
+            Inspirados pelo exemplo da igreja primitiva descrito em Atos 4, acreditamos que a fé deve se manifestar em ações concretas de amor ao próximo. Assim como os primeiros cristãos compartilhavam seus recursos para que ninguém passasse necessidade, buscamos ser instrumentos de provisão, solidariedade e transformação em nossa comunidade.
+
+            ### Nossa Missão
+            Promover ações sociais que atendam necessidades básicas de famílias e indivíduos, demonstrando o amor de Cristo através do cuidado prático e do serviço ao próximo.
+
+            ### Nossa Visão
+            Ser uma ponte entre aqueles que podem ajudar e aqueles que necessitam de apoio, fortalecendo a comunidade por meio da generosidade, da compaixão e da unidade.
+
+            ### O Que Fazemos
+
+            - Arrecadação e distribuição de cestas básicas.
+            - Doação de roupas, calçados e cobertores.
+            - Entrega de materiais de higiene pessoal.
+            - Apoio emergencial a famílias em situação de vulnerabilidade.
+            - Mobilização de voluntários para ações comunitárias.
+            - Desenvolvimento de campanhas solidárias ao longo do ano.
+
+            ### Nossa Base Bíblica
+            "Não havia entre eles necessitado algum." — Atos 4:34
+
+            Este versículo expressa a essência do Ministério Elos: unir pessoas, recursos e propósito para que o amor de Deus seja demonstrado de forma prática, alcançando aqueles que mais precisam.
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown(
+            f"""
+            <div class='help-box'>
+                <p><strong>Contato rápido:</strong></p>
+                <p>Telefone: <a href='tel:{contato['telefone']}'>{contato['telefone']}</a></p>
+                <p>WhatsApp: <a href='https://wa.me/{contato['whatsapp'].replace('(', '').replace(')', '').replace(' ', '').replace('-', '')}' target='_blank'>{contato['whatsapp']}</a></p>
+                <p>E-mail: <a href='mailto:{contato['email']}'>{contato['email']}</a></p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # Aba Visão Geral
+    elif st.session_state.current_page == "Visão Geral":
+        st.markdown("<div class='subtitle'>Diagnóstico e análise de estoque em tempo real.</div>", unsafe_allow_html=True)
         st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
         st.markdown("<h3>Diagnóstico rápido</h3>", unsafe_allow_html=True)
         m1, m2, m3, m4 = st.columns(4)
@@ -283,7 +347,9 @@ def main():
             st.markdown(f"<p style='color:#4d3a28;'>Mostrando os {len(df_falta_chart)} itens mais críticos para formar cestas básicas completas.</p>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
-    with estoque_tab:
+    # Aba Estoque
+    elif st.session_state.current_page == "Estoque":
+        st.markdown("<div class='subtitle'>Visualização completa do estoque disponível.</div>", unsafe_allow_html=True)
         st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
         st.markdown("<h3>Estoque</h3>", unsafe_allow_html=True)
         m1, m2, m3, m4 = st.columns(4)
@@ -301,7 +367,9 @@ def main():
             st.markdown(f"<p style='color:#4d3a28;'>Exibindo os top {min(8, len(df_estoque_chart))} produtos em estoque.</p>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
-    with contribuir_tab:
+    # Aba Contribuir
+    elif st.session_state.current_page == "Contribuir":
+        st.markdown("<div class='subtitle'>Veja os itens que precisamos para completar as cestas básicas.</div>", unsafe_allow_html=True)
         st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
         st.markdown("<h3>Contribuição</h3>", unsafe_allow_html=True)
         m1, m2, m3, m4 = st.columns(4)
@@ -320,202 +388,156 @@ def main():
             st.markdown(f"<p style='color:#4d3a28;'>Mostrando os {len(df_falta_chart)} itens mais críticos para formar cestas básicas completas.</p>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
-    with cadastro_tab:
+    # Aba Cadastro
+    elif st.session_state.current_page == "Cadastro":
+        st.markdown("<div class='subtitle'>Acesso para famílias cadastrar solicitações de ajuda.</div>", unsafe_allow_html=True)
         st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
         st.markdown("<h3>Cadastro de família</h3>", unsafe_allow_html=True)
 
-    if 'public_authenticated' not in st.session_state:
-        st.session_state.public_authenticated = False
-        st.session_state.public_user_login = None
-    if 'public_request_type' not in st.session_state:
-        st.session_state.public_request_type = None
-
-    if not st.session_state.public_authenticated:
-        st.markdown("<p>Para acessar o cadastro de família e solicitar itens, faça login ou cadastre-se.</p>", unsafe_allow_html=True)
-        acesso_opcao = st.radio("Escolha uma opção:", ["Entrar", "Cadastrar"], horizontal=True)
-
-        if acesso_opcao == "Entrar":
-            with st.form("form_login_familia"):
-                email = st.text_input("E-mail de acesso (*)", placeholder="seu@email.com")
-                senha = st.text_input("Senha (*)", type="password")
-                login_submit = st.form_submit_button("Entrar")
-                if login_submit:
-                    if not email.strip() or not senha.strip():
-                        st.error("Informe e-mail e senha para continuar.")
-                    else:
-                        usuario_info = validar_usuario(email, senha)
-                        if usuario_info:
-                            st.session_state.public_authenticated = True
-                            st.session_state.public_user_login = usuario_info["login"]
-                            st.success("Login realizado com sucesso.")
-                            st.experimental_rerun()
-                        else:
-                            st.error("Credenciais inválidas. Verifique e tente novamente.")
-
-        else:
-            with st.form("form_cadastrar_publico"):
-                nome_cadastro = st.text_input("Nome completo (*)")
-                email_cadastro = st.text_input("E-mail de acesso (*)", placeholder="seu@email.com")
-                senha_cadastro = st.text_input("Senha (*)", type="password")
-                senha_confirm = st.text_input("Confirme a senha (*)", type="password")
-                pedido_opcao = st.selectbox("O que você deseja solicitar?", ["Cesta Básica", "Itens do estoque"])
-                cadastrar_submit = st.form_submit_button("Cadastrar e continuar")
-
-                if cadastrar_submit:
-                    if not nome_cadastro.strip() or not email_cadastro.strip() or not senha_cadastro.strip() or not senha_confirm.strip():
-                        st.error("Preencha todos os campos obrigatórios para cadastrar.")
-                    elif senha_cadastro != senha_confirm:
-                        st.error("As senhas não conferem.")
-                    else:
-                        usuario_novo = {
-                            "login": email_cadastro.lower().strip(),
-                            "nome": nome_cadastro.strip(),
-                            "senha": senha_cadastro,
-                            "perfil": "publico",
-                            "ativo": True,
-                        }
-                        if salvar_usuario_publico(usuario_novo):
-                            st.session_state.public_authenticated = True
-                            st.session_state.public_user_login = usuario_novo["login"]
-                            st.session_state.public_request_type = pedido_opcao
-                            st.success("Cadastro realizado com sucesso. Você já pode continuar com o pedido.")
-                            st.experimental_rerun()
-                        else:
-                            st.error("Não foi possível cadastrar. Verifique se o e-mail já está em uso.")
-    else:
-        st.markdown(f"<div style='margin-bottom: 16px; color: #166534;'>Acesso liberado para <strong>{st.session_state.public_user_login}</strong>. <a href='#' id='logout-link'>Sair</a></div>", unsafe_allow_html=True)
-        if st.button("Sair do cadastro", key="logout_button"):
+        if 'public_authenticated' not in st.session_state:
             st.session_state.public_authenticated = False
             st.session_state.public_user_login = None
-            st.experimental_rerun()
+        if 'public_request_type' not in st.session_state:
+            st.session_state.public_request_type = None
 
-        with st.form("form_cadastro_familia"):
-            st.markdown("##### Dados Pessoais")
-            nome = st.text_input("Nome do Responsável *")
-            col_dep, col_prio = st.columns(2)
-            dep = col_dep.number_input("Número de Dependentes", min_value=0)
-            prio = col_prio.selectbox("Prioridade", ["Normal", "Alta (Urgência)"])
+        if not st.session_state.public_authenticated:
+            st.markdown("<p>Para acessar o cadastro de família e solicitar itens, faça login ou cadastre-se.</p>", unsafe_allow_html=True)
+            acesso_opcao = st.radio("Escolha uma opção:", ["Entrar", "Cadastrar"], horizontal=True)
 
-            st.markdown("##### Contato e Endereço")
-            col_tel, col_cep = st.columns([1, 1])
-            telefone = col_tel.text_input("Telefone de Contato *", placeholder="(32) 99999-0000")
-            cep = col_cep.text_input("CEP (Somente números) *", max_chars=8)
-            numero = st.text_input("Número e Complemento *")
-
-            st.markdown("##### Pedido")
-            pedido_tipo_options = ["Cesta Básica", "Itens do estoque"]
-            pedido_index = pedido_tipo_options.index(st.session_state.public_request_type) if st.session_state.public_request_type in pedido_tipo_options else 0
-            pedido_tipo = st.selectbox("Selecione o que deseja solicitar", pedido_tipo_options, index=pedido_index)
-
-            st.markdown("##### 📍 Coordenadas (Opcional - use se o mapa automático falhar)")
-            st.caption("Dica: No Google Maps, clique com o botão direito no local e copie os números em formato -23.5500, -46.6330")
-            c_lat, c_lon = st.columns(2)
-            lat_manual = c_lat.text_input("Latitude")
-            lon_manual = c_lon.text_input("Longitude")
-
-            st.markdown("##### Dados Eclesiásticos")
-            col_igreja, col_pastor = st.columns(2)
-            igreja = col_igreja.text_input("Nome da Igreja")
-            pastor = col_pastor.text_input("Nome do Pastor")
-
-            if st.form_submit_button("Cadastrar Família", type="primary"):
-                if not nome or not telefone or not cep or not numero:
-                    st.error("Preencha todos os campos obrigatórios marcados com *.")
-                else:
-                    lat, lon = None, None
-                    endereco_display = "Endereço em processamento"
-
-                    if lat_manual and lon_manual:
-                        try:
-                            lat = float(lat_manual.replace(',', '.'))
-                            lon = float(lon_manual.replace(',', '.'))
-                        except ValueError:
-                            st.warning("Coordenadas manuais inválidas. Tentando busca automática...")
-
-                    if lat is None:
-                        dados_cep, sucesso_cep = buscar_endereco_viacep(cep)
-                        if sucesso_cep:
-                            endereco_display = f"{dados_cep.get('logradouro','')}, {numero} - {dados_cep.get('bairro','')}"
-                            lat, lon = geocodificar_endereco(f"{endereco_display}, {dados_cep.get('localidade','')}, Brasil")
+            if acesso_opcao == "Entrar":
+                with st.form("form_login_familia"):
+                    email = st.text_input("E-mail de acesso (*)", placeholder="seu@email.com")
+                    senha = st.text_input("Senha (*)", type="password")
+                    login_submit = st.form_submit_button("Entrar")
+                    if login_submit:
+                        if not email.strip() or not senha.strip():
+                            st.error("Informe e-mail e senha para continuar.")
                         else:
-                            endereco_display = f"CEP {cep}, {numero}"
+                            usuario_info = validar_usuario(email, senha)
+                            if usuario_info:
+                                st.session_state.public_authenticated = True
+                                st.session_state.public_user_login = usuario_info["login"]
+                                st.success("Login realizado com sucesso.")
+                                st.experimental_rerun()
+                            else:
+                                st.error("Credenciais inválidas. Verifique e tente novamente.")
 
-                    dados_familia = {
-                        "nome": nome,
-                        "dependentes": dep,
-                        "prioridade": prio.split()[0],
-                        "telefone": telefone,
-                        "atendimento_tipo": pedido_tipo,
-                        "cep": cep,
-                        "endereco": endereco_display,
-                        "lat": lat,
-                        "lon": lon,
-                        "igreja": igreja if igreja else "Não informado",
-                        "pastor": pastor if pastor else "-",
-                        "ultima_entrega": None,
-                        "data_cadastro": datetime.datetime.now(),
-                        "ativo": True,
-                    }
+            else:
+                with st.form("form_cadastrar_publico"):
+                    nome_cadastro = st.text_input("Nome completo (*)")
+                    email_cadastro = st.text_input("E-mail de acesso (*)", placeholder="seu@email.com")
+                    senha_cadastro = st.text_input("Senha (*)", type="password")
+                    senha_confirm = st.text_input("Confirme a senha (*)", type="password")
+                    pedido_opcao = st.selectbox("O que você deseja solicitar?", ["Cesta Básica", "Itens do estoque"])
+                    cadastrar_submit = st.form_submit_button("Cadastrar e continuar")
 
-                    if salvar_familia_neon(dados_familia):
-                        if lat is not None:
-                            st.success("✅ Cadastro realizado e localizado com sucesso.")
+                    if cadastrar_submit:
+                        if not nome_cadastro.strip() or not email_cadastro.strip() or not senha_cadastro.strip() or not senha_confirm.strip():
+                            st.error("Preencha todos os campos obrigatórios para cadastrar.")
+                        elif senha_cadastro != senha_confirm:
+                            st.error("As senhas não conferem.")
                         else:
-                            st.warning("Cadastro realizado, mas o endereço não pôde ser geolocalizado automaticamente.")
-                        st.balloons()
+                            usuario_novo = {
+                                "login": email_cadastro.lower().strip(),
+                                "nome": nome_cadastro.strip(),
+                                "senha": senha_cadastro,
+                                "perfil": "publico",
+                                "ativo": True,
+                            }
+                            if salvar_usuario_publico(usuario_novo):
+                                st.session_state.public_authenticated = True
+                                st.session_state.public_user_login = usuario_novo["login"]
+                                st.session_state.public_request_type = pedido_opcao
+                                st.success("Cadastro realizado com sucesso. Você já pode continuar com o pedido.")
+                                st.experimental_rerun()
+                            else:
+                                st.error("Não foi possível cadastrar. Verifique se o e-mail já está em uso.")
+        else:
+            st.markdown(f"<div style='margin-bottom: 16px; color: #166534;'>Acesso liberado para <strong>{st.session_state.public_user_login}</strong>. <a href='#' id='logout-link'>Sair</a></div>", unsafe_allow_html=True)
+            if st.button("Sair do cadastro", key="logout_button"):
+                st.session_state.public_authenticated = False
+                st.session_state.public_user_login = None
+                st.experimental_rerun()
+
+            with st.form("form_cadastro_familia"):
+                st.markdown("##### Dados Pessoais")
+                nome = st.text_input("Nome do Responsável *")
+                col_dep, col_prio = st.columns(2)
+                dep = col_dep.number_input("Número de Dependentes", min_value=0)
+                prio = col_prio.selectbox("Prioridade", ["Normal", "Alta (Urgência)"])
+
+                st.markdown("##### Contato e Endereço")
+                col_tel, col_cep = st.columns([1, 1])
+                telefone = col_tel.text_input("Telefone de Contato *", placeholder="(32) 99999-0000")
+                cep = col_cep.text_input("CEP (Somente números) *", max_chars=8)
+                numero = st.text_input("Número e Complemento *")
+
+                st.markdown("##### Pedido")
+                pedido_tipo_options = ["Cesta Básica", "Itens do estoque"]
+                pedido_index = pedido_tipo_options.index(st.session_state.public_request_type) if st.session_state.public_request_type in pedido_tipo_options else 0
+                pedido_tipo = st.selectbox("Selecione o que deseja solicitar", pedido_tipo_options, index=pedido_index)
+
+                st.markdown("##### 📍 Coordenadas (Opcional - use se o mapa automático falhar)")
+                st.caption("Dica: No Google Maps, clique com o botão direito no local e copie os números em formato -23.5500, -46.6330")
+                c_lat, c_lon = st.columns(2)
+                lat_manual = c_lat.text_input("Latitude")
+                lon_manual = c_lon.text_input("Longitude")
+
+                st.markdown("##### Dados Eclesiásticos")
+                col_igreja, col_pastor = st.columns(2)
+                igreja = col_igreja.text_input("Nome da Igreja")
+                pastor = col_pastor.text_input("Nome do Pastor")
+
+                if st.form_submit_button("Cadastrar Família", type="primary"):
+                    if not nome or not telefone or not cep or not numero:
+                        st.error("Preencha todos os campos obrigatórios marcados com *.")
                     else:
-                        st.error("Não foi possível registrar a família. Tente novamente mais tarde.")
-    st.markdown("</div>", unsafe_allow_html=True)
+                        lat, lon = None, None
+                        endereco_display = "Endereço em processamento"
 
-    st.markdown("<div class='help-box'>Caso tenha dificuldade para preencher o formulário, mande uma mensagem pelo WhatsApp ou ligue para o número acima.</div>", unsafe_allow_html=True)
+                        if lat_manual and lon_manual:
+                            try:
+                                lat = float(lat_manual.replace(',', '.'))
+                                lon = float(lon_manual.replace(',', '.'))
+                            except ValueError:
+                                st.warning("Coordenadas manuais inválidas. Tentando busca automática...")
 
-    st.markdown("<div style='margin-top: 48px;'></div>", unsafe_allow_html=True)
-    st.markdown("<div class='big-title'>AJUDA SOCIAL</div>", unsafe_allow_html=True)
-    st.markdown("<div class='subtitle'>Página de apoio para famílias que precisam de cesta básica e informação direta.</div>", unsafe_allow_html=True)
+                        if lat is None:
+                            dados_cep, sucesso_cep = buscar_endereco_viacep(cep)
+                            if sucesso_cep:
+                                endereco_display = f"{dados_cep.get('logradouro','')}, {numero} - {dados_cep.get('bairro','')}"
+                                lat, lon = geocodificar_endereco(f"{endereco_display}, {dados_cep.get('localidade','')}, Brasil")
+                            else:
+                                endereco_display = f"CEP {cep}, {numero}"
 
-    st.markdown(
-        """
-        ## Ministério Elos
+                        dados_familia = {
+                            "nome": nome,
+                            "dependentes": dep,
+                            "prioridade": prio.split()[0],
+                            "telefone": telefone,
+                            "atendimento_tipo": pedido_tipo,
+                            "cep": cep,
+                            "endereco": endereco_display,
+                            "lat": lat,
+                            "lon": lon,
+                            "igreja": igreja if igreja else "Não informado",
+                            "pastor": pastor if pastor else "-",
+                            "ultima_entrega": None,
+                            "data_cadastro": datetime.datetime.now(),
+                            "ativo": True,
+                        }
 
-        ### Inspirado em Atos 4. Conectado pelo Amor. Movido pelo Serviço.
-        O Ministério Elos é uma iniciativa social da igreja dedicada a levar cuidado, dignidade e esperança às pessoas por meio da arrecadação e distribuição de itens essenciais.
-
-        Inspirados pelo exemplo da igreja primitiva descrito em Atos 4, acreditamos que a fé deve se manifestar em ações concretas de amor ao próximo. Assim como os primeiros cristãos compartilhavam seus recursos para que ninguém passasse necessidade, buscamos ser instrumentos de provisão, solidariedade e transformação em nossa comunidade.
-
-        ### Nossa Missão
-        Promover ações sociais que atendam necessidades básicas de famílias e indivíduos, demonstrando o amor de Cristo através do cuidado prático e do serviço ao próximo.
-
-        ### Nossa Visão
-        Ser uma ponte entre aqueles que podem ajudar e aqueles que necessitam de apoio, fortalecendo a comunidade por meio da generosidade, da compaixão e da unidade.
-
-        ### O Que Fazemos
-
-        - Arrecadação e distribuição de cestas básicas.
-        - Doação de roupas, calçados e cobertores.
-        - Entrega de materiais de higiene pessoal.
-        - Apoio emergencial a famílias em situação de vulnerabilidade.
-        - Mobilização de voluntários para ações comunitárias.
-        - Desenvolvimento de campanhas solidárias ao longo do ano.
-
-        ### Nossa Base Bíblica
-        "Não havia entre eles necessitado algum." — Atos 4:34
-
-        Este versículo expressa a essência do Ministério Elos: unir pessoas, recursos e propósito para que o amor de Deus seja demonstrado de forma prática, alcançando aqueles que mais precisam.
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        f"""
-        <div class='help-box'>
-            <p><strong>Contato rápido:</strong></p>
-            <p>Telefone: <a href='tel:{contato['telefone']}'>{contato['telefone']}</a></p>
-            <p>WhatsApp: <a href='https://wa.me/{contato['whatsapp'].replace('(', '').replace(')', '').replace(' ', '').replace('-', '')}' target='_blank'>{contato['whatsapp']}</a></p>
-            <p>E-mail: <a href='mailto:{contato['email']}'>{contato['email']}</a></p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+                        if salvar_familia_neon(dados_familia):
+                            if lat is not None:
+                                st.success("✅ Cadastro realizado e localizado com sucesso.")
+                            else:
+                                st.warning("Cadastro realizado, mas o endereço não pôde ser geolocalizado automaticamente.")
+                            st.balloons()
+                        else:
+                            st.error("Não foi possível registrar a família. Tente novamente mais tarde.")
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("<div class='help-box'>Caso tenha dificuldade para preencher o formulário, mande uma mensagem pelo WhatsApp ou ligue para o número acima.</div>", unsafe_allow_html=True)
 
 
 if __name__ == "__main__":
