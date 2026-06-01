@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import pandas as pd
 import datetime
@@ -45,15 +46,27 @@ st.markdown(
 @st.cache_resource
 def get_engine():
     try:
-        conn_url = st.secrets["postgres"]["url"]
+        conn_url = None
+        if hasattr(st, "secrets"):
+            postgres = st.secrets.get("postgres", {})
+            conn_url = postgres.get("url")
+
+        if not conn_url:
+            conn_url = os.environ.get("NEON_URL") or os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL")
+
+        if not conn_url:
+            raise ValueError("URL de conexão ao Neon não encontrada em st.secrets ou variáveis de ambiente.")
+
         engine = create_engine(conn_url, pool_pre_ping=True, echo=False)
         if hasattr(st, "session_state"):
             st.session_state.neon_connection_error = None
+            st.session_state.neon_connection_url = conn_url
         return engine
     except Exception as e:
         logging.warning(f"Erro ao obter engine Neon: {e}")
         if hasattr(st, "session_state"):
             st.session_state.neon_connection_error = str(e)
+            st.session_state.neon_connection_url = None
         return None
 
 
@@ -240,7 +253,9 @@ def main():
 
     if st.session_state.neon_connection_error:
         st.error(f"❌ Erro ao conectar ao Neon: {st.session_state.neon_connection_error}")
-        st.warning("Verifique seu arquivo de secrets e a URL de conexão PostgreSQL do Neon.")
+        st.warning("Verifique se a URL está em st.secrets['postgres']['url'] ou na variável de ambiente NEON_URL / DATABASE_URL / POSTGRES_URL.")
+        if st.session_state.get('neon_connection_url'):
+            st.info(f"Host de conexão usado: {st.session_state.neon_connection_url.split('@')[1].split('/')[0]}")
 
     st.markdown(
         """
