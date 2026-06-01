@@ -320,7 +320,7 @@ def main():
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
-    st.markdown("<h3>Itens que faltam na cesta básica</h3>", unsafe_allow_html=True)
+    st.markdown("<h3>Se quiser contribuir, saiba que precisamos dos seguintes itens:</h3>", unsafe_allow_html=True)
     if df_falta.empty:
         st.success("Nenhum item essencial identificado ou estoque suficiente para todos os itens cadastrados.")
     else:
