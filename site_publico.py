@@ -330,68 +330,75 @@ def main():
     # Aba Visão Geral
     elif st.session_state.current_page == "Visão Geral":
         st.markdown("<div class='subtitle'>Diagnóstico e análise de estoque em tempo real.</div>", unsafe_allow_html=True)
-        st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
         st.markdown("<h3>Diagnóstico rápido</h3>", unsafe_allow_html=True)
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Cestas possíveis", cestas_possiveis)
         m2.metric("Itens cadastrados", total_itens_catalogo)
         m3.metric("Total em estoque", f"{total_estoque}")
         m4.metric("Itens críticos", f"{total_itens_criticos}")
-        st.markdown("</div>", unsafe_allow_html=True)
-        st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
+        
+        st.markdown("<h3 style='margin-top: 32px;'>Itens mais críticos</h3>", unsafe_allow_html=True)
         if df_falta.empty:
             st.success("Nenhum item essencial identificado ou estoque suficiente para todos os itens cadastrados.")
         else:
             df_falta_chart = df_falta.sort_values(by='Faltam para 1 cesta', ascending=False).head(8)
-            st.bar_chart(df_falta_chart.set_index('Item')['Faltam para 1 cesta'])
-            st.markdown(f"<p style='color:#4d3a28;'>Mostrando os {len(df_falta_chart)} itens mais críticos para formar cestas básicas completas.</p>", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+            col1, col2 = st.columns([1, 1])
+            with col1:
+                st.pie_chart(df_falta_chart.set_index('Item')['Faltam para 1 cesta'])
+            with col2:
+                st.markdown("#### Detalhes:")
+                for idx, row in df_falta_chart.iterrows():
+                    st.write(f"• **{row['Item']}**: {row['Faltam para 1 cesta']} unidades faltam")
 
     # Aba Estoque
     elif st.session_state.current_page == "Estoque":
         st.markdown("<div class='subtitle'>Visualização completa do estoque disponível.</div>", unsafe_allow_html=True)
-        st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
         st.markdown("<h3>Estoque</h3>", unsafe_allow_html=True)
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Cestas possíveis", cestas_possiveis)
         m2.metric("Itens cadastrados", total_itens_catalogo)
         m3.metric("Total em estoque", f"{total_estoque}")
         m4.metric("Produtos sem estoque", f"{itens_sem_estoque}")
-        st.markdown("</div>", unsafe_allow_html=True)
-        st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
+        
         if df_estoque.empty:
             st.success("Nenhum estoque registrado no momento.")
         else:
+            st.markdown("<h3 style='margin-top: 32px;'>Distribuição de produtos em estoque</h3>", unsafe_allow_html=True)
             df_estoque_chart = df_estoque.head(8).set_index('Produto')['Quantidade disponível']
-            st.bar_chart(df_estoque_chart)
-            st.markdown(f"<p style='color:#4d3a28;'>Exibindo os top {min(8, len(df_estoque_chart))} produtos em estoque.</p>", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+            col1, col2 = st.columns([1, 1])
+            with col1:
+                st.pie_chart(df_estoque_chart)
+            with col2:
+                st.markdown("#### Produtos em estoque:")
+                for produto, qtd in df_estoque_chart.items():
+                    st.write(f"• **{produto}**: {int(qtd)} unidades")
 
     # Aba Contribuir
     elif st.session_state.current_page == "Contribuir":
         st.markdown("<div class='subtitle'>Veja os itens que precisamos para completar as cestas básicas.</div>", unsafe_allow_html=True)
-        st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
         st.markdown("<h3>Contribuição</h3>", unsafe_allow_html=True)
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Cestas possíveis", cestas_possiveis)
         m2.metric("Itens críticos", total_itens_criticos)
         m3.metric("Total em estoque", f"{total_estoque}")
         m4.metric("Itens cadastrados", total_itens_catalogo)
-        st.markdown("</div>", unsafe_allow_html=True)
-        st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
-        st.markdown("<h3>Se quiser contribuir, saiba que precisamos dos seguintes itens:</h3>", unsafe_allow_html=True)
+        
+        st.markdown("<h3 style='margin-top: 32px;'>Se quiser contribuir, saiba que precisamos dos seguintes itens:</h3>", unsafe_allow_html=True)
         if df_falta.empty:
             st.success("Nenhum item essencial identificado no momento.")
         else:
             df_falta_chart = df_falta.sort_values(by='Faltam para 1 cesta', ascending=False).head(8)
-            st.bar_chart(df_falta_chart.set_index('Item')['Faltam para 1 cesta'])
-            st.markdown(f"<p style='color:#4d3a28;'>Mostrando os {len(df_falta_chart)} itens mais críticos para formar cestas básicas completas.</p>", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+            col1, col2 = st.columns([1, 1])
+            with col1:
+                st.pie_chart(df_falta_chart.set_index('Item')['Faltam para 1 cesta'])
+            with col2:
+                st.markdown("#### Itens críticos:")
+                for idx, row in df_falta_chart.iterrows():
+                    st.write(f"• **{row['Item']}**: faltam {row['Faltam para 1 cesta']} unidades")
 
     # Aba Cadastro
     elif st.session_state.current_page == "Cadastro":
         st.markdown("<div class='subtitle'>Acesso para famílias cadastrar solicitações de ajuda.</div>", unsafe_allow_html=True)
-        st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
         st.markdown("<h3>Cadastro de família</h3>", unsafe_allow_html=True)
 
         if 'public_authenticated' not in st.session_state:
@@ -536,7 +543,6 @@ def main():
                         else:
                             st.error("Não foi possível registrar a família. Tente novamente mais tarde.")
         
-        st.markdown("</div>", unsafe_allow_html=True)
         st.markdown("<div class='help-box'>Caso tenha dificuldade para preencher o formulário, mande uma mensagem pelo WhatsApp ou ligue para o número acima.</div>", unsafe_allow_html=True)
 
 
