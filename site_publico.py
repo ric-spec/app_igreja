@@ -7,6 +7,16 @@ import logging
 import requests
 import matplotlib.pyplot as plt
 from sqlalchemy import create_engine
+import locale
+
+# Configurar locale para português brasileiro
+try:
+    locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
+except:
+    try:
+        locale.setlocale(locale.LC_ALL, 'pt_BR')
+    except:
+        pass
 
 logging.basicConfig(level=logging.INFO)
 
@@ -190,7 +200,7 @@ def salvar_familia_neon(dados_familia):
         dados = dados_familia.copy()
         dados.pop("id_familia", None)
         if "data_cadastro" not in dados or not dados["data_cadastro"]:
-            dados["data_cadastro"] = datetime.datetime.now()
+            dados["data_cadastro"] = datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')
 
         df = pd.DataFrame([dados])
         df.to_sql("familias", engine, if_exists="append", index=False)
@@ -250,7 +260,7 @@ def main():
         st.session_state.neon_connection_error = None
     
     if 'current_page' not in st.session_state:
-        st.session_state.current_page = "AJUDA SOCIAL"
+        st.session_state.current_page = "ELOS"
 
     df_catalogo = carregar_catalogo_neon()
     df_lotes = carregar_lotes_neon()
@@ -262,11 +272,11 @@ def main():
     itens_sem_estoque = 0 if df_lotes.empty else int((df_estoque['Quantidade disponível'] == 0).sum())
 
     # Título
-    st.markdown("<div class='big-title'>AJUDA SOCIAL</div>", unsafe_allow_html=True)
+    st.markdown("<div class='big-title'>PROJETO ELOS - PIBJF Cascatinha</div>", unsafe_allow_html=True)
     
     # Navegação horizontal com botões
     col_nav = st.columns(5)
-    pages = ["AJUDA SOCIAL", "Visão Geral", "Estoque", "Contribuir", "Cadastro"]
+    pages = ["ELOS", "Visão Geral", "Estoque", "Contribuir", "Cadastro"]
     
     for idx, page in enumerate(pages):
         with col_nav[idx]:
@@ -282,8 +292,8 @@ def main():
             st.info(f"Host de conexão usado: {st.session_state.neon_connection_url.split('@')[1].split('/')[0]}")
 
 
-    # Conteúdo AJUDA SOCIAL (página principal)
-    if st.session_state.current_page == "AJUDA SOCIAL":
+    # Conteúdo ELOS (página principal)
+    if st.session_state.current_page == "ELOS":
         st.markdown("<div class='subtitle'>Página de apoio para famílias que precisam de cesta básica e informação direta.</div>", unsafe_allow_html=True)
         
         st.markdown(
@@ -291,7 +301,7 @@ def main():
             ## Ministério Elos
 
             ### Inspirado em Atos 4. Conectado pelo Amor. Movido pelo Serviço.
-            O Ministério Elos é uma iniciativa social da igreja dedicada a levar cuidado, dignidade e esperança às pessoas por meio da arrecadação e distribuição de itens essenciais.
+            O Ministério Elos é uma iniciativa social da PIBJF Cascatinha dedicada a levar cuidado, dignidade e esperança às pessoas por meio da arrecadação e distribuição de itens essenciais.
 
             Inspirados pelo exemplo da igreja primitiva descrito em Atos 4, acreditamos que a fé deve se manifestar em ações concretas de amor ao próximo. Assim como os primeiros cristãos compartilhavam seus recursos para que ninguém passasse necessidade, buscamos ser instrumentos de provisão, solidariedade e transformação em nossa comunidade.
 
@@ -347,6 +357,7 @@ def main():
             'Data': pd.date_range('2024-05-01', periods=7, freq='D'),
             'Doações': [5, 12, 15, 18, 22, 28, 35]
         })
+        df_evolucao['Data'] = df_evolucao['Data'].dt.strftime('%d/%m/%Y')
         
         st.line_chart(df_evolucao.set_index('Data')['Doações'])
         
@@ -357,6 +368,7 @@ def main():
             'Data': pd.date_range('2024-05-01', periods=7, freq='D'),
             'Entregas': [1, 2, 3, 2, 4, 3, 5]
         })
+        df_entregas['Data'] = df_entregas['Data'].dt.strftime('%d/%m/%Y')
         
         col1, col2 = st.columns([2, 1])
         with col1:
@@ -544,7 +556,7 @@ def main():
                             "igreja": igreja if igreja else "Não informado",
                             "pastor": pastor if pastor else "-",
                             "ultima_entrega": None,
-                            "data_cadastro": datetime.datetime.now(),
+                            "data_cadastro": datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
                             "ativo": True,
                         }
 
