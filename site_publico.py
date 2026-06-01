@@ -332,84 +332,83 @@ def main():
 
     # Aba Visão Geral
     elif st.session_state.current_page == "Visão Geral":
-        st.markdown("<div class='subtitle'>Diagnóstico e análise de estoque em tempo real.</div>", unsafe_allow_html=True)
-        st.markdown("<h3>Diagnóstico rápido</h3>", unsafe_allow_html=True)
+        st.markdown("<div class='subtitle'>Evolução de doações e entregas.</div>", unsafe_allow_html=True)
+        st.markdown("<h3>Dashboard de Doações e Entregas</h3>", unsafe_allow_html=True)
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Cestas possíveis", cestas_possiveis)
-        m2.metric("Itens cadastrados", total_itens_catalogo)
-        m3.metric("Total em estoque", f"{total_estoque}")
-        m4.metric("Itens críticos", f"{total_itens_criticos}")
+        m2.metric("Total em estoque", f"{total_estoque}")
+        m3.metric("Itens críticos", f"{total_itens_criticos}")
+        m4.metric("Itens cadastrados", total_itens_catalogo)
         
-        st.markdown("<h3 style='margin-top: 32px;'>Itens mais críticos</h3>", unsafe_allow_html=True)
-        if df_falta.empty:
-            st.success("Nenhum item essencial identificado ou estoque suficiente para todos os itens cadastrados.")
-        else:
-            df_falta_chart = df_falta.sort_values(by='Faltam para 1 cesta', ascending=False).head(8)
-            col1, col2 = st.columns([1, 1])
-            with col1:
-                fig, ax = plt.subplots(figsize=(8, 6))
-                ax.pie(df_falta_chart['Faltam para 1 cesta'], labels=df_falta_chart['Item'], autopct='%1.1f%%', startangle=90)
-                ax.set_title('Distribuição de itens faltantes')
-                st.pyplot(fig)
-                plt.close(fig)
-            with col2:
-                st.markdown("#### Detalhes:")
-                for idx, row in df_falta_chart.iterrows():
-                    st.write(f"• **{row['Item']}**: {row['Faltam para 1 cesta']} unidades faltam")
+        st.markdown("<h3 style='margin-top: 32px;'>📈 Evolução de Doações Recebidas</h3>", unsafe_allow_html=True)
+        
+        # Simulando dados de evolução (em produção, viriam do banco de dados)
+        df_evolucao = pd.DataFrame({
+            'Data': pd.date_range('2024-05-01', periods=7, freq='D'),
+            'Doações': [5, 12, 15, 18, 22, 28, 35]
+        })
+        
+        st.line_chart(df_evolucao.set_index('Data')['Doações'])
+        
+        st.markdown("<h3 style='margin-top: 32px;'>📦 Entregas por Dia</h3>", unsafe_allow_html=True)
+        
+        # Simulando dados de entregas (em produção, viriam do banco de dados)
+        df_entregas = pd.DataFrame({
+            'Data': pd.date_range('2024-05-01', periods=7, freq='D'),
+            'Entregas': [1, 2, 3, 2, 4, 3, 5]
+        })
+        
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            st.bar_chart(df_entregas.set_index('Data')['Entregas'])
+        with col2:
+            st.markdown("#### Resumo:")
+            total_entregas = df_entregas['Entregas'].sum()
+            media_entregas = df_entregas['Entregas'].mean()
+            st.write(f"**Total**: {int(total_entregas)} entregas")
+            st.write(f"**Média/dia**: {media_entregas:.1f}")
 
     # Aba Estoque
     elif st.session_state.current_page == "Estoque":
-        st.markdown("<div class='subtitle'>Visualização completa do estoque disponível.</div>", unsafe_allow_html=True)
-        st.markdown("<h3>Estoque</h3>", unsafe_allow_html=True)
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Cestas possíveis", cestas_possiveis)
-        m2.metric("Itens cadastrados", total_itens_catalogo)
-        m3.metric("Total em estoque", f"{total_estoque}")
-        m4.metric("Produtos sem estoque", f"{itens_sem_estoque}")
+        st.markdown("<div class='subtitle'>Itens disponíveis em estoque.</div>", unsafe_allow_html=True)
+        st.markdown("<h3>Itens em Estoque</h3>", unsafe_allow_html=True)
+        m1, m2 = st.columns(2)
+        m1.metric("Total em estoque", f"{total_estoque} unidades")
+        m2.metric("Produtos disponíveis", len(df_estoque))
         
         if df_estoque.empty:
             st.success("Nenhum estoque registrado no momento.")
         else:
-            st.markdown("<h3 style='margin-top: 32px;'>Distribuição de produtos em estoque</h3>", unsafe_allow_html=True)
-            df_estoque_chart = df_estoque.head(8)
-            col1, col2 = st.columns([1, 1])
-            with col1:
-                fig, ax = plt.subplots(figsize=(8, 6))
-                ax.pie(df_estoque_chart['Quantidade disponível'], labels=df_estoque_chart['Produto'], autopct='%1.1f%%', startangle=90)
-                ax.set_title('Produtos em estoque')
-                st.pyplot(fig)
-                plt.close(fig)
-            with col2:
-                st.markdown("#### Produtos em estoque:")
-                for idx, row in df_estoque_chart.iterrows():
-                    st.write(f"• **{row['Produto']}**: {int(row['Quantidade disponível'])} unidades")
+            df_estoque_sorted = df_estoque.sort_values(by='Quantidade disponível', ascending=False)
+            st.markdown("#### Produtos disponíveis:")
+            for idx, row in df_estoque_sorted.iterrows():
+                col1, col2, col3 = st.columns([2, 1, 1])
+                with col1:
+                    st.write(f"**{row['Produto']}**")
+                with col2:
+                    st.write(f"📦 {int(row['Quantidade disponível'])} un")
 
     # Aba Contribuir
     elif st.session_state.current_page == "Contribuir":
-        st.markdown("<div class='subtitle'>Veja os itens que precisamos para completar as cestas básicas.</div>", unsafe_allow_html=True)
-        st.markdown("<h3>Contribuição</h3>", unsafe_allow_html=True)
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Cestas possíveis", cestas_possiveis)
-        m2.metric("Itens críticos", total_itens_criticos)
-        m3.metric("Total em estoque", f"{total_estoque}")
-        m4.metric("Itens cadastrados", total_itens_catalogo)
+        st.markdown("<div class='subtitle'>Itens que faltam para montar as cestas básicas.</div>", unsafe_allow_html=True)
+        st.markdown("<h3>Itens Necessários</h3>", unsafe_allow_html=True)
+        m1, m2 = st.columns(2)
+        m1.metric("Itens críticos", total_itens_criticos)
+        m2.metric("Cestas possíveis com doação", cestas_possiveis)
         
-        st.markdown("<h3 style='margin-top: 32px;'>Se quiser contribuir, saiba que precisamos dos seguintes itens:</h3>", unsafe_allow_html=True)
         if df_falta.empty:
-            st.success("Nenhum item essencial identificado no momento.")
+            st.success("✅ Estoque completo! Temos todos os itens necessários.")
         else:
-            df_falta_chart = df_falta.sort_values(by='Faltam para 1 cesta', ascending=False).head(8)
-            col1, col2 = st.columns([1, 1])
-            with col1:
-                fig, ax = plt.subplots(figsize=(8, 6))
-                ax.pie(df_falta_chart['Faltam para 1 cesta'], labels=df_falta_chart['Item'], autopct='%1.1f%%', startangle=90)
-                ax.set_title('Itens que precisamos')
-                st.pyplot(fig)
-                plt.close(fig)
-            with col2:
-                st.markdown("#### Itens críticos:")
-                for idx, row in df_falta_chart.iterrows():
-                    st.write(f"• **{row['Item']}**: faltam {row['Faltam para 1 cesta']} unidades")
+            df_falta_sorted = df_falta[df_falta['Faltam para 1 cesta'] > 0].sort_values(by='Faltam para 1 cesta', ascending=False)
+            st.markdown("#### O que falta:")
+            for idx, row in df_falta_sorted.iterrows():
+                col1, col2, col3 = st.columns([2, 1, 1])
+                with col1:
+                    st.write(f"**{row['Item']}**")
+                with col2:
+                    st.write(f"❌ Faltam: {row['Faltam para 1 cesta']}")
+                with col3:
+                    st.write(f"📦 Temos: {row['Qtd em estoque']}")
 
     # Aba Cadastro
     elif st.session_state.current_page == "Cadastro":
@@ -440,7 +439,7 @@ def main():
                                 st.session_state.public_authenticated = True
                                 st.session_state.public_user_login = usuario_info["login"]
                                 st.success("Login realizado com sucesso.")
-                                st.experimental_rerun()
+                                st.rerun()
                             else:
                                 st.error("Credenciais inválidas. Verifique e tente novamente.")
 
@@ -471,7 +470,7 @@ def main():
                                 st.session_state.public_user_login = usuario_novo["login"]
                                 st.session_state.public_request_type = pedido_opcao
                                 st.success("Cadastro realizado com sucesso. Você já pode continuar com o pedido.")
-                                st.experimental_rerun()
+                                st.rerun()
                             else:
                                 st.error("Não foi possível cadastrar. Verifique se o e-mail já está em uso.")
         else:
@@ -479,7 +478,7 @@ def main():
             if st.button("Sair do cadastro", key="logout_button"):
                 st.session_state.public_authenticated = False
                 st.session_state.public_user_login = None
-                st.experimental_rerun()
+                st.rerun()
 
             with st.form("form_cadastro_familia"):
                 st.markdown("##### Dados Pessoais")
