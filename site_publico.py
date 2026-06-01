@@ -310,37 +310,66 @@ def main():
     total_estoque = int(df_lotes['quantidade'].sum()) if not df_lotes.empty else 0
     itens_sem_estoque = 0 if df_lotes.empty else int((df_estoque['Quantidade disponível'] == 0).sum())
 
-    st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
-    st.markdown("<h3>Diagnóstico rápido</h3>", unsafe_allow_html=True)
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Cestas possíveis", cestas_possiveis)
-    m2.metric("Itens cadastrados", total_itens_catalogo)
-    m3.metric("Total em estoque", f"{total_estoque}")
-    m4.metric("Itens críticos", f"{total_itens_criticos}")
-    st.markdown("</div>", unsafe_allow_html=True)
+    vizao_tab, estoque_tab, contribuir_tab, cadastro_tab = st.tabs(["Visão Geral", "Estoque", "Contribuir", "Cadastro"])
 
-    st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
-    st.markdown("<h3>Se quiser contribuir, saiba que precisamos dos seguintes itens:</h3>", unsafe_allow_html=True)
-    if df_falta.empty:
-        st.success("Nenhum item essencial identificado ou estoque suficiente para todos os itens cadastrados.")
-    else:
-        df_falta_chart = df_falta.sort_values(by='Faltam para 1 cesta', ascending=False).head(8)
-        st.bar_chart(df_falta_chart.set_index('Item')['Faltam para 1 cesta'])
-        st.markdown(f"<p style='color:#4d3a28;'>Mostrando os {len(df_falta_chart)} itens mais críticos para formar cestas básicas completas.</p>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+    with vizao_tab:
+        st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
+        st.markdown("<h3>Diagnóstico rápido</h3>", unsafe_allow_html=True)
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Cestas possíveis", cestas_possiveis)
+        m2.metric("Itens cadastrados", total_itens_catalogo)
+        m3.metric("Total em estoque", f"{total_estoque}")
+        m4.metric("Itens críticos", f"{total_itens_criticos}")
+        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
+        if df_falta.empty:
+            st.success("Nenhum item essencial identificado ou estoque suficiente para todos os itens cadastrados.")
+        else:
+            df_falta_chart = df_falta.sort_values(by='Faltam para 1 cesta', ascending=False).head(8)
+            st.bar_chart(df_falta_chart.set_index('Item')['Faltam para 1 cesta'])
+            st.markdown(f"<p style='color:#4d3a28;'>Mostrando os {len(df_falta_chart)} itens mais críticos para formar cestas básicas completas.</p>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
-    st.markdown("<h3>Estoque atual</h3>", unsafe_allow_html=True)
-    if df_estoque.empty:
-        st.success("Nenhum estoque registrado no momento.")
-    else:
-        df_estoque_chart = df_estoque.head(8).set_index('Produto')['Quantidade disponível']
-        st.bar_chart(df_estoque_chart)
-        st.markdown(f"<p style='color:#4d3a28;'>Exibindo os top {min(8, len(df_estoque_chart))} produtos em estoque.</p>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+    with estoque_tab:
+        st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
+        st.markdown("<h3>Estoque</h3>", unsafe_allow_html=True)
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Cestas possíveis", cestas_possiveis)
+        m2.metric("Itens cadastrados", total_itens_catalogo)
+        m3.metric("Total em estoque", f"{total_estoque}")
+        m4.metric("Produtos sem estoque", f"{itens_sem_estoque}")
+        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
+        if df_estoque.empty:
+            st.success("Nenhum estoque registrado no momento.")
+        else:
+            df_estoque_chart = df_estoque.head(8).set_index('Produto')['Quantidade disponível']
+            st.bar_chart(df_estoque_chart)
+            st.markdown(f"<p style='color:#4d3a28;'>Exibindo os top {min(8, len(df_estoque_chart))} produtos em estoque.</p>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
-    st.markdown("<h3>Cadastro de família</h3>", unsafe_allow_html=True)
+    with contribuir_tab:
+        st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
+        st.markdown("<h3>Contribuição</h3>", unsafe_allow_html=True)
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Cestas possíveis", cestas_possiveis)
+        m2.metric("Itens críticos", total_itens_criticos)
+        m3.metric("Total em estoque", f"{total_estoque}")
+        m4.metric("Itens cadastrados", total_itens_catalogo)
+        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
+        st.markdown("<h3>Se quiser contribuir, saiba que precisamos dos seguintes itens:</h3>", unsafe_allow_html=True)
+        if df_falta.empty:
+            st.success("Nenhum item essencial identificado no momento.")
+        else:
+            df_falta_chart = df_falta.sort_values(by='Faltam para 1 cesta', ascending=False).head(8)
+            st.bar_chart(df_falta_chart.set_index('Item')['Faltam para 1 cesta'])
+            st.markdown(f"<p style='color:#4d3a28;'>Mostrando os {len(df_falta_chart)} itens mais críticos para formar cestas básicas completas.</p>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with cadastro_tab:
+        st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
+        st.markdown("<h3>Cadastro de família</h3>", unsafe_allow_html=True)
 
     if 'public_authenticated' not in st.session_state:
         st.session_state.public_authenticated = False
