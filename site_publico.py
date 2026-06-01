@@ -317,20 +317,38 @@ def main():
         st.markdown(f"<div style='font-size: 22px; font-weight: 700;'>{datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}</div>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
+    total_itens_catalogo = len(df_catalogo)
+    total_itens_criticos = 0 if df_falta.empty else df_falta['Faltam para 1 cesta'].gt(0).sum()
+    total_estoque = int(df_lotes['quantidade'].sum()) if not df_lotes.empty else 0
+    itens_sem_estoque = 0 if df_lotes.empty else int((df_estoque['Quantidade disponível'] == 0).sum())
+
+    st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
+    st.markdown("<h3>Diagnóstico rápido</h3>", unsafe_allow_html=True)
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Cestas possíveis", cestas_possiveis)
+    m2.metric("Itens cadastrados", total_itens_catalogo)
+    m3.metric("Total em estoque", f"{total_estoque}")
+    m4.metric("Itens críticos", f"{total_itens_criticos}")
+    st.markdown("</div>", unsafe_allow_html=True)
+
     st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
     st.markdown("<h3>Itens que faltam na cesta básica</h3>", unsafe_allow_html=True)
     if df_falta.empty:
-        st.info("Não há itens essenciais cadastrados ainda.")
+        st.success("Nenhum item essencial identificado ou estoque suficiente para todos os itens cadastrados.")
     else:
-        st.dataframe(df_falta.style.apply(lambda row: ['background-color: #fee2e2' if row['Faltam para 1 cesta'] > 0 else 'background-color: #ecfdf5' for _ in row], axis=1), use_container_width=True)
+        df_falta_chart = df_falta.sort_values(by='Faltam para 1 cesta', ascending=False).head(8)
+        st.bar_chart(df_falta_chart.set_index('Item')['Faltam para 1 cesta'])
+        st.markdown(f"<p style='color:#4d3a28;'>Mostrando os {len(df_falta_chart)} itens mais críticos para formar cestas básicas completas.</p>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
     st.markdown("<h3>Estoque atual</h3>", unsafe_allow_html=True)
     if df_estoque.empty:
-        st.info("Não há estoque registrado no momento.")
+        st.success("Nenhum estoque registrado no momento.")
     else:
-        st.dataframe(df_estoque.reset_index(drop=True), use_container_width=True)
+        df_estoque_chart = df_estoque.head(8).set_index('Produto')['Quantidade disponível']
+        st.bar_chart(df_estoque_chart)
+        st.markdown(f"<p style='color:#4d3a28;'>Exibindo os top {min(8, len(df_estoque_chart))} produtos em estoque.</p>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div class='card' style='margin-top: 24px;'>", unsafe_allow_html=True)
