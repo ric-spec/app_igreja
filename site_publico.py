@@ -177,8 +177,9 @@ def montar_dashboard(df_catalogo, df_lotes):
             "Faltam para 1 cesta": int(faltam),
         })
 
-    df_criticos = pd.DataFrame(itens)
-    df_criticos = df_criticos.sort_values(by=["Faltam para 1 cesta", "Qtd em estoque"], ascending=[False, True])
+    df_criticos = pd.DataFrame(itens, columns=["Item", "Qtd por cesta", "Qtd em estoque", "Faltam para 1 cesta"])
+    if not df_criticos.empty:
+        df_criticos = df_criticos.sort_values(by=["Faltam para 1 cesta", "Qtd em estoque"], ascending=[False, True])
 
     estoque_geral = df_lotes.groupby(["id_item", "nome_item"], as_index=False)["quantidade"].sum()
     estoque_geral = estoque_geral.sort_values(by="quantidade", ascending=False)
