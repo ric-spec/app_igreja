@@ -27,9 +27,11 @@ DEFAULT_CONTACT_PHONE = "(032) 98719-4140"
 DEFAULT_CONTACT_EMAIL = "contato@igreja.org"
 DEFAULT_CONTACT_WHATSAPP = "(032) 98719-4140"
 
+LOGO_PATH = os.path.join(os.path.dirname(__file__), 'logo_site_igreja.png')
+
 st.set_page_config(
     page_title="Projeto Atos de acolhimento à famílias",
-    page_icon="🏠",
+    page_icon=LOGO_PATH,
     layout="wide"
 )
 
@@ -304,15 +306,13 @@ def montar_dashboard(df_catalogo, df_lotes):
 
 
 def main():
-    # Caminho absoluto para evitar erros no Streamlit Cloud
-    img_path = os.path.join(os.path.dirname(__file__), 'logo_site_igreja.png')
-    adicionar_fundo_marca_de_agua(img_path)
+    adicionar_fundo_marca_de_agua(LOGO_PATH)
     
     # Inserir Logo no topo
     col_logo_1, col_logo_2, col_logo_3 = st.columns([1, 1, 1])
     with col_logo_2:
         try:
-            st.image(img_path, width=200)
+            st.image(LOGO_PATH, width=200)
         except:
             pass
 
