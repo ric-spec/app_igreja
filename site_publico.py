@@ -75,6 +75,22 @@ st.markdown(
         /* Garantir contraste global */
         p, span, label, div { color: #1a1a1a !important; }
         h1, h2, h3, h4, h5, h6 { color: #1e3a22 !important; }
+        
+        /* Estilo para botões de Navegação e Formulários */
+        div.stButton > button, div.stFormSubmitButton > button {
+            background-color: #2d5533 !important;
+            color: white !important;
+            border-radius: 10px;
+            border: 1px solid #2d5533;
+            transition: all 0.3s ease;
+            font-weight: 700;
+        }
+        
+        div.stButton > button:hover, div.stFormSubmitButton > button:hover {
+            background-color: #f7f2eb !important;
+            color: #1a1a1a !important;
+            border: 1px solid #1e3a22;
+        }
     </style>
     """,
     unsafe_allow_html=True,
