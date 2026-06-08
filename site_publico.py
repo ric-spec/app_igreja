@@ -25,7 +25,7 @@ DEFAULT_CONTACT_EMAIL = "contato@igreja.org"
 DEFAULT_CONTACT_WHATSAPP = "(032) 98719-4140"
 
 st.set_page_config(
-    page_title="Projeto Elos de acolhimento à famílias",
+    page_title="Projeto Atos de acolhimento à famílias",
     page_icon="🏠",
     layout="wide"
 )
@@ -260,7 +260,7 @@ def main():
         st.session_state.neon_connection_error = None
     
     if 'current_page' not in st.session_state:
-        st.session_state.current_page = "ELOS"
+        st.session_state.current_page = "Sobre o projeto"
 
     df_catalogo = carregar_catalogo_neon()
     df_lotes = carregar_lotes_neon()
@@ -272,11 +272,11 @@ def main():
     itens_sem_estoque = 0 if df_lotes.empty else int((df_estoque['Quantidade disponível'] == 0).sum())
 
     # Título
-    st.markdown("<div class='big-title'>PROJETO ELOS - PIBJF Cascatinha</div>", unsafe_allow_html=True)
+    st.markdown("<div class='big-title'>PROJETO ATOS - PIBJF Cascatinha</div>", unsafe_allow_html=True)
     
     # Navegação horizontal com botões
-    col_nav = st.columns(5)
-    pages = ["ELOS", "Visão Geral", "Estoque", "Contribuir", "Cadastro"]
+    col_nav = st.columns(3)
+    pages = ["Sobre o projeto", "Quero Contribuir", "Preciso de ajuda"]
     
     for idx, page in enumerate(pages):
         with col_nav[idx]:
@@ -292,16 +292,16 @@ def main():
             st.info(f"Host de conexão usado: {st.session_state.neon_connection_url.split('@')[1].split('/')[0]}")
 
 
-    # Conteúdo ELOS (página principal)
-    if st.session_state.current_page == "ELOS":
+    # Conteúdo Sobre o projeto (página principal)
+    if st.session_state.current_page == "Sobre o projeto":
         st.markdown("<div class='subtitle'>Página de apoio para famílias que precisam de cesta básica e informação direta.</div>", unsafe_allow_html=True)
         
         st.markdown(
             """
-            ## Ministério Elos
+            ## Ministério Atos
 
             ### Inspirado em Atos 4. Conectado pelo Amor. Movido pelo Serviço.
-            O Ministério Elos é uma iniciativa social da PIBJF Cascatinha dedicada a levar cuidado, dignidade e esperança às pessoas por meio da arrecadação e distribuição de itens essenciais.
+            O Ministério Atos é uma iniciativa social da PIBJF Cascatinha dedicada a levar cuidado, dignidade e esperança às pessoas por meio da arrecadação e distribuição de itens essenciais.
 
             Inspirados pelo exemplo da igreja primitiva descrito em Atos 4, acreditamos que a fé deve se manifestar em ações concretas de amor ao próximo. Assim como os primeiros cristãos compartilhavam seus recursos para que ninguém passasse necessidade, buscamos ser instrumentos de provisão, solidariedade e transformação em nossa comunidade.
 
@@ -323,7 +323,7 @@ def main():
             ### Nossa Base Bíblica
             "Não havia entre eles necessitado algum." — Atos 4:34
 
-            Este versículo expressa a essência do Ministério Elos: unir pessoas, recursos e propósito para que o amor de Deus seja demonstrado de forma prática, alcançando aqueles que mais precisam.
+            Este versículo expressa a essência do Ministério Atos: unir pessoas, recursos e propósito para que o amor de Deus seja demonstrado de forma prática, alcançando aqueles que mais precisam.
             """,
             unsafe_allow_html=True,
         )
@@ -340,68 +340,8 @@ def main():
             unsafe_allow_html=True,
         )
 
-    # Aba Visão Geral
-    elif st.session_state.current_page == "Visão Geral":
-        st.markdown("<div class='subtitle'>Evolução de doações e entregas.</div>", unsafe_allow_html=True)
-        st.markdown("<h3>Dashboard de Doações e Entregas</h3>", unsafe_allow_html=True)
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Cestas possíveis", cestas_possiveis)
-        m2.metric("Total em estoque", f"{total_estoque}")
-        m3.metric("Itens críticos", f"{total_itens_criticos}")
-        m4.metric("Itens cadastrados", total_itens_catalogo)
-        
-        st.markdown("<h3 style='margin-top: 32px;'>📈 Evolução de Doações Recebidas</h3>", unsafe_allow_html=True)
-        
-        # Simulando dados de evolução (em produção, viriam do banco de dados)
-        df_evolucao = pd.DataFrame({
-            'Data': pd.date_range('2024-05-01', periods=7, freq='D'),
-            'Doações': [5, 12, 15, 18, 22, 28, 35]
-        })
-        df_evolucao['Data'] = df_evolucao['Data'].dt.strftime('%d/%m/%Y')
-        
-        st.line_chart(df_evolucao.set_index('Data')['Doações'])
-        
-        st.markdown("<h3 style='margin-top: 32px;'>📦 Entregas por Dia</h3>", unsafe_allow_html=True)
-        
-        # Simulando dados de entregas (em produção, viriam do banco de dados)
-        df_entregas = pd.DataFrame({
-            'Data': pd.date_range('2024-05-01', periods=7, freq='D'),
-            'Entregas': [1, 2, 3, 2, 4, 3, 5]
-        })
-        df_entregas['Data'] = df_entregas['Data'].dt.strftime('%d/%m/%Y')
-        
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            st.bar_chart(df_entregas.set_index('Data')['Entregas'])
-        with col2:
-            st.markdown("#### Resumo:")
-            total_entregas = df_entregas['Entregas'].sum()
-            media_entregas = df_entregas['Entregas'].mean()
-            st.write(f"**Total**: {int(total_entregas)} entregas")
-            st.write(f"**Média/dia**: {media_entregas:.1f}")
-
-    # Aba Estoque
-    elif st.session_state.current_page == "Estoque":
-        st.markdown("<div class='subtitle'>Itens disponíveis em estoque.</div>", unsafe_allow_html=True)
-        st.markdown("<h3>Itens em Estoque</h3>", unsafe_allow_html=True)
-        m1, m2 = st.columns(2)
-        m1.metric("Total em estoque", f"{total_estoque} unidades")
-        m2.metric("Produtos disponíveis", len(df_estoque))
-        
-        if df_estoque.empty:
-            st.success("Nenhum estoque registrado no momento.")
-        else:
-            df_estoque_sorted = df_estoque.sort_values(by='Quantidade disponível', ascending=False)
-            st.markdown("#### Produtos disponíveis:")
-            for idx, row in df_estoque_sorted.iterrows():
-                col1, col2, col3 = st.columns([2, 1, 1])
-                with col1:
-                    st.write(f"**{row['Produto']}**")
-                with col2:
-                    st.write(f"📦 {int(row['Quantidade disponível'])} un")
-
-    # Aba Contribuir
-    elif st.session_state.current_page == "Contribuir":
+    # Aba Quero Contribuir
+    elif st.session_state.current_page == "Quero Contribuir":
         st.markdown("<div class='subtitle'>Itens que faltam para montar as cestas básicas.</div>", unsafe_allow_html=True)
         st.markdown("<h3>Itens Necessários</h3>", unsafe_allow_html=True)
         m1, m2 = st.columns(2)
@@ -422,8 +362,8 @@ def main():
                 with col3:
                     st.write(f"📦 Temos: {row['Qtd em estoque']}")
 
-    # Aba Cadastro
-    elif st.session_state.current_page == "Cadastro":
+    # Aba Preciso de ajuda
+    elif st.session_state.current_page == "Preciso de ajuda":
         st.markdown("<div class='subtitle'>Acesso para famílias cadastrar solicitações de ajuda.</div>", unsafe_allow_html=True)
         st.markdown("<h3>Cadastro de família</h3>", unsafe_allow_html=True)
 
