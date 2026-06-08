@@ -414,7 +414,7 @@ def main():
             st.success("✅ Estoque completo! Temos todos os itens necessários.")
         else:
             df_falta_sorted = df_falta[df_falta['Faltam para 1 cesta'] > 0].sort_values(by='Faltam para 1 cesta', ascending=False)
-            st.markdown("#### O que falta:")
+            st.markdown("#### Do que precisamos:")
             for idx, row in df_falta_sorted.iterrows():
                 col1, col2, col3 = st.columns([2, 1, 1])
                 with col1:
