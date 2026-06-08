@@ -78,10 +78,10 @@ st.markdown(
         
         /* Estilo para botões de Navegação e Formulários */
         div.stButton > button, div.stFormSubmitButton > button {
-            background-color: #2d5533 !important;
+            background-color: #3e7a49 !important;
             color: white !important;
             border-radius: 10px;
-            border: 1px solid #2d5533;
+            border: 1px solid #3e7a49;
             transition: all 0.3s ease;
             font-weight: 700;
         }
