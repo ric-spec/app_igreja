@@ -1,5 +1,6 @@
 import os
 import streamlit as st
+import base64
 # Projeto Atos - Site Público
 import pandas as pd
 import datetime
@@ -32,12 +33,32 @@ st.set_page_config(
     layout="wide"
 )
 
+def adicionar_fundo_marca_de_agua(caminho_ficheiro):
+    """Lê a imagem local, converte para base64 e aplica como fundo com transparência."""
+    try:
+        with open(caminho_ficheiro, "rb") as f:
+            data = f.read()
+        bin_str = base64.b64encode(data).decode()
+        
+        # O linear-gradient aplica uma camada quase opaca (92%) por cima da imagem.
+        # Ajustámos a cor para o tom bege (#f7f2eb) que já utiliza no seu projeto.
+        page_bg_img = f'''
+        <style>
+        .stApp {{
+            background-image: linear-gradient(rgba(247, 242, 235, 0.92), rgba(247, 242, 235, 0.92)), url("data:image/png;base64,{bin_str}");
+            background-size: cover; /* Cobre todo o ecrã */
+            background-position: center; /* Mantém a imagem centrada */
+            background-attachment: fixed; /* O fundo não se move quando faz scroll */
+        }}
+        </style>
+        '''
+        st.markdown(page_bg_img, unsafe_allow_html=True)
+    except FileNotFoundError:
+        st.warning(f"Atenção: O ficheiro de imagem '{caminho_ficheiro}' não foi encontrado.")
+
 st.markdown(
     """
     <style>
-        body {
-            background: #f7f2eb;
-        }
         .big-title { font-size: 42px; font-weight: 800; margin-bottom: 4px; color: #2d5533; }
         .subtitle { font-size: 18px; color: #5f5a4d; margin-top: 0; margin-bottom: 18px; }
         .card { background: #fffdf7; border-radius: 18px; padding: 24px; box-shadow: 0 15px 40px rgba(83, 71, 58, 0.08); }
@@ -264,6 +285,7 @@ def montar_dashboard(df_catalogo, df_lotes):
 
 
 def main():
+    adicionar_fundo_marca_de_agua('logo_site_igreja.png')
     contato = carregar_contato()
 
     if 'neon_connection_error' not in st.session_state:
