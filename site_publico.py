@@ -59,19 +59,22 @@ def adicionar_fundo_marca_de_agua(caminho_ficheiro):
 st.markdown(
     """
     <style>
-        .big-title { font-size: 42px; font-weight: 800; margin-bottom: 4px; color: #2d5533; }
-        .subtitle { font-size: 18px; color: #5f5a4d; margin-top: 0; margin-bottom: 18px; }
-        .card { background: #fffdf7; border-radius: 18px; padding: 24px; box-shadow: 0 15px 40px rgba(83, 71, 58, 0.08); }
+        .big-title { font-size: 42px; font-weight: 800; margin-bottom: 4px; color: #1e3a22; }
+        .subtitle { font-size: 18px; color: #333333; margin-top: 0; margin-bottom: 18px; }
+        .card { background: rgba(255, 253, 247, 0.95); border-radius: 18px; padding: 24px; box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15); color: #1a1a1a; }
         .metric-card { border-left: 6px solid #8a5a2b; }
-        .help-box { background: #f6e2c4; border-radius: 14px; padding: 22px; margin-top: 16px; border: 1px solid #d9b79d; color: #4d3a28; }
-        .help-box p, .help-box a { color: #4d3a28; }
-        .help-box strong { color: #3e2e21; }
+        .help-box { background: rgba(246, 226, 196, 0.95); border-radius: 14px; padding: 22px; margin-top: 16px; border: 1px solid #d9b79d; color: #1a1a1a; }
+        .help-box p, .help-box a { color: #1a1a1a; }
+        .help-box strong { color: #000000; }
         .item-status { font-weight: 700; }
-        .green { color: #196f3d; }
-        .orange { color: #a35418; }
-        .red { color: #912018; }
-        a { color: #7b4d29; text-decoration: none; }
+        .green { color: #14532d; }
+        .orange { color: #9a3412; }
+        .red { color: #991b1b; }
+        a { color: #7b4d29; text-decoration: none; font-weight: 600; }
         a:hover { text-decoration: underline; }
+        /* Garantir contraste global */
+        p, span, label, div { color: #1a1a1a !important; }
+        h1, h2, h3, h4, h5, h6 { color: #1e3a22 !important; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -288,6 +291,15 @@ def main():
     # Caminho absoluto para evitar erros no Streamlit Cloud
     img_path = os.path.join(os.path.dirname(__file__), 'logo_site_igreja.png')
     adicionar_fundo_marca_de_agua(img_path)
+    
+    # Inserir Logo no topo
+    col_logo_1, col_logo_2, col_logo_3 = st.columns([1, 1, 1])
+    with col_logo_2:
+        try:
+            st.image(img_path, width=200)
+        except:
+            pass
+
     contato = carregar_contato()
 
     if 'neon_connection_error' not in st.session_state:
