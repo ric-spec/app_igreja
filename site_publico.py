@@ -285,7 +285,9 @@ def montar_dashboard(df_catalogo, df_lotes):
 
 
 def main():
-    adicionar_fundo_marca_de_agua('logo_site_igreja.png')
+    # Caminho absoluto para evitar erros no Streamlit Cloud
+    img_path = os.path.join(os.path.dirname(__file__), 'logo_site_igreja.png')
+    adicionar_fundo_marca_de_agua(img_path)
     contato = carregar_contato()
 
     if 'neon_connection_error' not in st.session_state:
