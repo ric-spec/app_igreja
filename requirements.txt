@@ -8,3 +8,4 @@ streamlit-folium
 sqlalchemy
 psycopg2-binary
 matplotlib
+bcrypt

@@ -8,6 +8,7 @@ import requests
 import matplotlib.pyplot as plt
 from sqlalchemy import create_engine
 import locale
+import bcrypt
 
 # Configurar locale para português brasileiro
 try:
@@ -82,7 +83,10 @@ def get_engine():
 
 
 def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+    """Gera um hash seguro usando bcrypt com salt automático."""
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password.encode("utf-8"), salt)
+    return hashed.decode("utf-8")
 
 
 def carregar_usuario_por_login(login):
@@ -105,8 +109,11 @@ def validar_usuario(email, senha):
     login_canonico = email.lower().strip()
     usuario = carregar_usuario_por_login(login_canonico)
     if usuario and usuario.get("ativo", True):
-        if usuario["senha_hash"] == hash_password(senha):
-            return usuario
+        try:
+            if bcrypt.checkpw(senha.encode("utf-8"), usuario["senha_hash"].encode("utf-8")):
+                return usuario
+        except Exception as e:
+            logging.warning(f"Erro ao validar senha com bcrypt: {e}")
     return None
 
 
@@ -159,6 +166,7 @@ def geocodificar_endereco(endereco_busca):
     return None, None
 
 
+@st.cache_data(ttl=300)
 def carregar_catalogo_neon():
     engine = get_engine()
     if engine is None:
@@ -175,6 +183,7 @@ def carregar_catalogo_neon():
         return pd.DataFrame(columns=["id_item", "nome", "qtd_por_cesta", "categoria"])
 
 
+@st.cache_data(ttl=300)
 def carregar_lotes_neon():
     engine = get_engine()
     if engine is None:
@@ -383,17 +392,18 @@ def main():
                     senha = st.text_input("Senha (*)", type="password")
                     login_submit = st.form_submit_button("Entrar")
                     if login_submit:
-                        if not email.strip() or not senha.strip():
-                            st.error("Informe e-mail e senha para continuar.")
-                        else:
-                            usuario_info = validar_usuario(email, senha)
-                            if usuario_info:
-                                st.session_state.public_authenticated = True
-                                st.session_state.public_user_login = usuario_info["login"]
-                                st.success("Login realizado com sucesso.")
-                                st.rerun()
+                        with st.spinner("Validando credenciais..."):
+                            if not email.strip() or not senha.strip():
+                                st.error("Informe e-mail e senha para continuar.")
                             else:
-                                st.error("Credenciais inválidas. Verifique e tente novamente.")
+                                usuario_info = validar_usuario(email, senha)
+                                if usuario_info:
+                                    st.session_state.public_authenticated = True
+                                    st.session_state.public_user_login = usuario_info["login"]
+                                    st.success("Login realizado com sucesso.")
+                                    st.rerun()
+                                else:
+                                    st.error("Credenciais inválidas. Verifique e tente novamente.")
 
             else:
                 with st.form("form_cadastrar_publico"):
@@ -405,26 +415,27 @@ def main():
                     cadastrar_submit = st.form_submit_button("Cadastrar e continuar")
 
                     if cadastrar_submit:
-                        if not nome_cadastro.strip() or not email_cadastro.strip() or not senha_cadastro.strip() or not senha_confirm.strip():
-                            st.error("Preencha todos os campos obrigatórios para cadastrar.")
-                        elif senha_cadastro != senha_confirm:
-                            st.error("As senhas não conferem.")
-                        else:
-                            usuario_novo = {
-                                "login": email_cadastro.lower().strip(),
-                                "nome": nome_cadastro.strip(),
-                                "senha": senha_cadastro,
-                                "perfil": "publico",
-                                "ativo": True,
-                            }
-                            if salvar_usuario_publico(usuario_novo):
-                                st.session_state.public_authenticated = True
-                                st.session_state.public_user_login = usuario_novo["login"]
-                                st.session_state.public_request_type = pedido_opcao
-                                st.success("Cadastro realizado com sucesso. Você já pode continuar com o pedido.")
-                                st.rerun()
+                        with st.spinner("Criando sua conta..."):
+                            if not nome_cadastro.strip() or not email_cadastro.strip() or not senha_cadastro.strip() or not senha_confirm.strip():
+                                st.error("Preencha todos os campos obrigatórios para cadastrar.")
+                            elif senha_cadastro != senha_confirm:
+                                st.error("As senhas não conferem.")
                             else:
-                                st.error("Não foi possível cadastrar. Verifique se o e-mail já está em uso.")
+                                usuario_novo = {
+                                    "login": email_cadastro.lower().strip(),
+                                    "nome": nome_cadastro.strip(),
+                                    "senha": senha_cadastro,
+                                    "perfil": "publico",
+                                    "ativo": True,
+                                }
+                                if salvar_usuario_publico(usuario_novo):
+                                    st.session_state.public_authenticated = True
+                                    st.session_state.public_user_login = usuario_novo["login"]
+                                    st.session_state.public_request_type = pedido_opcao
+                                    st.success("Cadastro realizado com sucesso. Você já pode continuar com o pedido.")
+                                    st.rerun()
+                                else:
+                                    st.error("Não foi possível cadastrar. Verifique se o e-mail já está em uso.")
         else:
             st.markdown(f"<div style='margin-bottom: 16px; color: #166534;'>Acesso liberado para <strong>{st.session_state.public_user_login}</strong>. <a href='#' id='logout-link'>Sair</a></div>", unsafe_allow_html=True)
             if st.button("Sair do cadastro", key="logout_button"):
@@ -462,10 +473,11 @@ def main():
                 pastor = col_pastor.text_input("Nome do Pastor")
 
                 if st.form_submit_button("Cadastrar Família", type="primary"):
-                    if not nome or not telefone or not cep or not numero:
-                        st.error("Preencha todos os campos obrigatórios marcados com *.")
-                    else:
-                        lat, lon = None, None
+                    with st.spinner("Processando cadastro da família..."):
+                        if not nome or not telefone or not cep or not numero:
+                            st.error("Preencha todos os campos obrigatórios marcados com *.")
+                        else:
+                            lat, lon = None, None
                         endereco_display = "Endereço em processamento"
 
                         if lat_manual and lon_manual:
