@@ -509,7 +509,7 @@ def main():
                         else:
                             st.error("Não foi possível registrar a família. Tente novamente mais tarde.")
         
-        st.markdown("<div class='help-box'>Caso tenha dificuldade para preencher o formulário, mande uma mensagem pelo WhatsApp ou ligue para o número acima.</div>", unsafe_allow_html=True)
+        st.markdown("<div class='help-box'>Caso tenha dificuldade para preencher o formulário, mande uma mensagem pelo WhatsApp [(032) 98719-4140](https://wa.me/5532987194140) ou ligue para o número [(032) 98719-4140](tel:032987194140).</div>", unsafe_allow_html=True)
 
 
 if __name__ == "__main__":
