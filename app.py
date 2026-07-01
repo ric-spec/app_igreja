@@ -909,13 +909,28 @@ def alterar_senha_neon(login, senha_nova):
             return False
         
         from sqlalchemy import text
+        login_clean = login.lower().strip()
         nova_hash = hash_password(senha_nova)
         with engine.begin() as conn:
             result = conn.execute(
-                text("UPDATE usuarios SET senha_hash = :senha WHERE login = :login"),
-                {'senha': nova_hash, 'login': login}
+                text("UPDATE usuarios SET senha_hash = :senha WHERE lower(login) = :login"),
+                {'senha': nova_hash, 'login': login_clean}
             )
-        return result.rowcount > 0
+            if result.rowcount == 0 and login_clean in ('admin', 'master'):
+                nome_default = 'Administrador' if login_clean == 'admin' else 'Master'
+                conn.execute(
+                    text(
+                        "INSERT INTO usuarios (login, nome, senha_hash, perfil, ativo) "
+                        "VALUES (:login, :nome, :senha, :perfil, TRUE)"
+                    ),
+                    {
+                        'login': login_clean,
+                        'nome': nome_default,
+                        'senha': nova_hash,
+                        'perfil': login_clean
+                    }
+                )
+        return True
     except Exception as e:
         logging.warning(f"Erro ao alterar senha: {e}")
         return False
