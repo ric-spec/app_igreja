@@ -102,5 +102,5 @@ def test_formatar_item_em_negrito_remove_espacos_e_escapa_html():
 
     markup = module.formatar_item_para_destaque("Ervilha ")
 
-    assert "<strong>Ervilha</strong>" in markup
-    assert "&lt;" not in markup
+    assert "**Ervilha**" in markup
+    assert "<strong>" not in markup

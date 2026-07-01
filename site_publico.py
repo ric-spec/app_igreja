@@ -272,7 +272,7 @@ def carregar_contato():
 def formatar_item_para_destaque(item):
     """Formata o nome do item para destaque, limpando espaços e preservando o texto em negrito."""
     texto = str(item or "").strip()
-    return f"<strong>{texto}</strong>"
+    return f"**{texto}**"
 
 
 def montar_dashboard(df_catalogo, df_lotes):
