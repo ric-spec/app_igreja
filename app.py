@@ -911,11 +911,11 @@ def alterar_senha_neon(login, senha_nova):
         from sqlalchemy import text
         nova_hash = hash_password(senha_nova)
         with engine.begin() as conn:
-            conn.execute(
-                text("UPDATE usuarios SET senha_hash = %(senha)s WHERE login = %(login)s"),
+            result = conn.execute(
+                text("UPDATE usuarios SET senha_hash = :senha WHERE login = :login"),
                 {'senha': nova_hash, 'login': login}
             )
-        return True
+        return result.rowcount > 0
     except Exception as e:
         logging.warning(f"Erro ao alterar senha: {e}")
         return False
