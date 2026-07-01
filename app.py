@@ -840,6 +840,8 @@ if 'user_login' not in st.session_state:
     st.session_state.user_login = None
 if 'user_role' not in st.session_state:
     st.session_state.user_role = None
+if 'force_password_change' not in st.session_state:
+    st.session_state.force_password_change = False
 
 def login_page():
     # Centraliza o conteúdo vertical e horizontalmente usando colunas
@@ -860,7 +862,7 @@ def login_page():
             usuario = st.text_input("Usuário", placeholder="admin")
             senha = st.text_input("Senha", type="password", placeholder="••••••")
             submit = st.form_submit_button("Entrar no Sistema", use_container_width=True, type="primary")
-            
+
             if submit:
                 if usuario and senha:
                     usuario_info = validar_usuario(usuario, senha)
@@ -869,14 +871,18 @@ def login_page():
                         st.session_state.current_user = usuario_info.get('nome', usuario_info['login'])
                         st.session_state.user_login = usuario_info['login']
                         st.session_state.user_role = usuario_info['perfil']
-                        st.toast("Login realizado com sucesso!", icon="🎉")
+                        st.session_state.force_password_change = is_default_password(usuario_info['login'], senha)
+                        if st.session_state.force_password_change:
+                            st.warning("Você está usando a senha inicial. Por favor, altere sua senha antes de continuar.")
+                        else:
+                            st.toast("Login realizado com sucesso!", icon="🎉")
                         time.sleep(0.5)
                         st.rerun()
                     else:
                         st.error("Credenciais inválidas. Tente novamente.")
                 else:
                     st.error("Preencha usuário e senha.")
-        
+
         st.markdown("""
             <div style='text-align: center; margin-top: 20px; color: #94A3B8; font-size: 12px;'>
                 Esqueceu a senha? Contate o administrador da igreja.
@@ -888,6 +894,7 @@ def logout():
     st.session_state.current_user = None
     st.session_state.user_login = None
     st.session_state.user_role = None
+    st.session_state.force_password_change = False
     st.rerun()
 
 
@@ -912,6 +919,16 @@ def alterar_senha_neon(login, senha_nova):
     except Exception as e:
         logging.warning(f"Erro ao alterar senha: {e}")
         return False
+
+
+def is_default_password(login, senha):
+    """Verifica se o login está usando a senha padrão para forçar alteração."""
+    if login in ('admin', 'master') and senha == 'pibjf':
+        return True
+    usuario = carregar_usuario_por_login(login)
+    if usuario is None:
+        return False
+    return usuario.get('senha_hash') == hash_password('pibjf')
 
 
 def carregar_permissoes_abas_neon(login):
@@ -1412,6 +1429,29 @@ def gerar_html_impressao(df, titulo, subtitulo=""):
 # ==========================================
 def main_app():
     refresh_estoque_neon()
+    if st.session_state.force_password_change:
+        st.markdown("### Primeiro acesso: altere sua senha")
+        with st.form("form_forcar_alterar_senha"):
+            senha_atual = st.text_input("Senha Atual", type="password")
+            senha_nova = st.text_input("Nova Senha", type="password")
+            senha_confirmada = st.text_input("Confirmar Nova Senha", type="password")
+            if st.form_submit_button("Alterar Senha", use_container_width=True):
+                if not senha_atual or not senha_nova or not senha_confirmada:
+                    st.error("Preencha todos os campos.")
+                elif senha_nova != senha_confirmada:
+                    st.error("As novas senhas não conferem.")
+                elif len(senha_nova) < 6:
+                    st.error("A nova senha deve ter pelo menos 6 caracteres.")
+                elif not validar_usuario(st.session_state.user_login, senha_atual):
+                    st.error("Senha atual incorreta.")
+                elif alterar_senha_neon(st.session_state.user_login, senha_nova):
+                    st.success("✅ Senha alterada com sucesso. Agora você pode acessar o sistema.")
+                    st.session_state.force_password_change = False
+                    st.rerun()
+                else:
+                    st.error("Erro ao alterar senha. Tente novamente.")
+        st.stop()
+
     # --- Sidebar de Navegação ---
     with st.sidebar:
         nome_exibido = st.session_state.current_user or 'Usuário'
