@@ -269,17 +269,40 @@ def carregar_contato():
     }
 
 
+def formatar_item_para_destaque(item):
+    """Formata o nome do item para destaque, limpando espaços e preservando o texto em negrito."""
+    texto = str(item or "").strip()
+    return f"<strong>{texto}</strong>"
+
+
 def montar_dashboard(df_catalogo, df_lotes):
     itens = []
-    for _, item in df_catalogo.iterrows():
+    catalogo = df_catalogo.copy()
+    lotes = df_lotes.copy()
+
+    if catalogo.empty:
+        return pd.DataFrame(columns=["Item", "Qtd por cesta", "Qtd em estoque", "Faltam para 1 cesta"]), pd.DataFrame(columns=["Produto", "Quantidade disponível"]), 0
+
+    catalogo["id_item"] = pd.to_numeric(catalogo["id_item"], errors="coerce")
+    catalogo["qtd_por_cesta"] = pd.to_numeric(catalogo["qtd_por_cesta"], errors="coerce").fillna(0).astype(int)
+    lotes["id_item"] = pd.to_numeric(lotes["id_item"], errors="coerce")
+    lotes["quantidade"] = pd.to_numeric(lotes["quantidade"], errors="coerce").fillna(0).astype(int)
+
+    for _, item in catalogo.iterrows():
         if item["qtd_por_cesta"] <= 0:
             continue
-        qtd_estoque = df_lotes[df_lotes["id_item"] == item["id_item"]]["quantidade"].sum()
-        faltam = max(0, item["qtd_por_cesta"] - qtd_estoque)
+
+        qtd_estoque = int(lotes[lotes["id_item"] == item["id_item"]]["quantidade"].sum())
+        if qtd_estoque == 0 and item.get("nome"):
+            qtd_estoque = int(
+                lotes[lotes["nome_item"].astype(str).str.strip().str.lower() == str(item["nome"]).strip().lower()]["quantidade"].sum()
+            )
+
+        faltam = max(0, int(item["qtd_por_cesta"]) - qtd_estoque)
         itens.append({
             "Item": item["nome"],
-            "Qtd por cesta": item["qtd_por_cesta"],
-            "Qtd em estoque": int(qtd_estoque),
+            "Qtd por cesta": int(item["qtd_por_cesta"]),
+            "Qtd em estoque": qtd_estoque,
             "Faltam para 1 cesta": int(faltam),
         })
 
@@ -287,20 +310,11 @@ def montar_dashboard(df_catalogo, df_lotes):
     if not df_criticos.empty:
         df_criticos = df_criticos.sort_values(by=["Faltam para 1 cesta", "Qtd em estoque"], ascending=[False, True])
 
-    estoque_geral = df_lotes.groupby(["id_item", "nome_item"], as_index=False)["quantidade"].sum()
+    estoque_geral = lotes.groupby(["id_item", "nome_item"], as_index=False)["quantidade"].sum()
     estoque_geral = estoque_geral.sort_values(by="quantidade", ascending=False)
     estoque_geral.rename(columns={"nome_item": "Produto", "quantidade": "Quantidade disponível"}, inplace=True)
 
-    cestas_possiveis = 0
-    if not df_catalogo.empty:
-        cestas_possiveis = min(
-            [(estoque_geral[estoque_geral["Produto"] == item["nome"]]["Quantidade disponível"].sum() // item["qtd_por_cesta"]) if item["qtd_por_cesta"] > 0 else 9999
-             for _, item in df_catalogo.iterrows() if item["qtd_por_cesta"] > 0] or [0]
-        )
-        if cestas_possiveis == 9999:
-            cestas_possiveis = 0
-
-    return df_criticos, estoque_geral, int(cestas_possiveis)
+    return df_criticos, estoque_geral, 0
 
 
 def main():
@@ -328,8 +342,6 @@ def main():
 
     total_itens_catalogo = len(df_catalogo)
     total_itens_criticos = 0 if df_falta.empty else df_falta['Faltam para 1 cesta'].gt(0).sum()
-    total_estoque = int(df_lotes['quantidade'].sum()) if not df_lotes.empty else 0
-    itens_sem_estoque = 0 if df_lotes.empty else int((df_estoque['Quantidade disponível'] == 0).sum())
 
     # Título
     st.markdown("<div class='big-title'>PROJETO ATOS - PIBJF Cascatinha</div>", unsafe_allow_html=True)
@@ -402,25 +414,17 @@ def main():
 
     # Aba Quero Contribuir
     elif st.session_state.current_page == "Quero Contribuir":
-        st.markdown("<div class='subtitle'>Itens que faltam para montar as cestas básicas.</div>", unsafe_allow_html=True)
-        st.markdown("<h3>Itens Necessários</h3>", unsafe_allow_html=True)
-        m1, m2 = st.columns(2)
-        m1.metric("Itens críticos", total_itens_criticos)
-        m2.metric("Cestas possíveis com doação", cestas_possiveis)
+        st.markdown("<div class='subtitle'>Itens que faltam para montar 1 cesta básica completa para uma família com 4 pessoas.</div>", unsafe_allow_html=True)
+        st.markdown("<h3>O que precisamos</h3>", unsafe_allow_html=True)
+        st.markdown(f"<p><strong>{total_itens_criticos}</strong> item(ns) ainda faltam para completar 1 cesta básica.</p>", unsafe_allow_html=True)
         
         if df_falta.empty:
-            st.success("✅ Estoque completo! Temos todos os itens necessários.")
+            st.success("✅ Estoque completo para montar 1 cesta básica.")
         else:
             df_falta_sorted = df_falta[df_falta['Faltam para 1 cesta'] > 0].sort_values(by='Faltam para 1 cesta', ascending=False)
-            st.markdown("#### Do que precisamos:")
-            for idx, row in df_falta_sorted.iterrows():
-                col1, col2, col3 = st.columns([2, 1, 1])
-                with col1:
-                    st.write(f"**{row['Item']}**")
-                with col2:
-                    st.write(f"❌ Faltam: {row['Faltam para 1 cesta']}")
-                with col3:
-                    st.write(f"📦 Temos: {row['Qtd em estoque']}")
+            st.markdown("#### Itens que ainda faltam:")
+            for _, row in df_falta_sorted.iterrows():
+                st.markdown(f"- {formatar_item_para_destaque(row['Item'])} — faltam {row['Faltam para 1 cesta']} unidade(s) para 1 cesta")
 
     # Aba Preciso de ajuda
     elif st.session_state.current_page == "Preciso de ajuda":

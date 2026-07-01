@@ -95,3 +95,12 @@ def test_catalogo_usa_dados_frescos(monkeypatch):
     assert not first.empty
     assert not second.empty
     assert len(calls) == 2
+
+
+def test_formatar_item_em_negrito_remove_espacos_e_escapa_html():
+    module = load_site_module()
+
+    markup = module.formatar_item_para_destaque("Ervilha ")
+
+    assert "<strong>Ervilha</strong>" in markup
+    assert "&lt;" not in markup
