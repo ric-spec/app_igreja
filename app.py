@@ -955,6 +955,53 @@ def salvar_permissoes_abas_neon(login, abas_permitidas):
         return False
 
 
+PERFIS_DISPONIVEIS = {
+    "Master (Acesso técnico completo)": "master",
+    "Técnico (Acesso irrestrito)": "tecnico",
+    "Gestão (Tudo exceto Usuários)": "admin",
+    "Secretaria": "secretaria",
+    "Controle de Estoque": "controle_estoque",
+    "Voluntário": "voluntario"
+}
+
+
+def obter_abas_padrao_por_perfil(perfil):
+    perfil = (perfil or '').lower()
+    opcoes_base = [
+        "Dashboard",
+        "Despensa",
+        "Famílias",
+        "Parceiros",
+        "Voluntários",
+        "Histórico",
+        "Modo SOS",
+        "Mapa Famílias",
+        "Relatórios"
+    ]
+
+    if perfil in ("master", "tecnico"):
+        return opcoes_base + ["Usuários"]
+    if perfil == "admin":
+        return opcoes_base
+    if perfil == "secretaria":
+        return [
+            "Dashboard",
+            "Despensa",
+            "Famílias",
+            "Agendamentos",
+            "Parceiros",
+            "Histórico",
+            "Mapa Famílias",
+            "Relatórios"
+        ]
+    if perfil == "controle_estoque":
+        return ["Dashboard", "Despensa", "Relatórios"]
+    if perfil == "voluntario":
+        return ["Dashboard", "Famílias", "Agendamentos", "Mapa Famílias", "Histórico"]
+
+    return opcoes_base
+
+
 # ==========================================
 # 3. INTEGRAÇÃO DE APIs (Georreferenciação)
 # ==========================================
@@ -1091,6 +1138,12 @@ if 'db_familias' not in st.session_state:
 if 'db_entregas' not in st.session_state:
     st.session_state.db_entregas = pd.DataFrame(columns=['id_entrega', 'nome_familia', 'data', 'tipo'])
 
+if 'db_agendamentos' not in st.session_state:
+    st.session_state.db_agendamentos = pd.DataFrame(columns=[
+        'id_agendamento', 'id_familia', 'nome_familia', 'data_agendada', 'hora_agendada',
+        'tipo_entrega', 'voluntario', 'observacoes', 'status', 'data_criacao'
+    ])
+
 if 'db_locais_acolhimento' not in st.session_state:
     st.session_state.db_locais_acolhimento = pd.DataFrame([
         {'id_local': 1, 'nome': 'Salão Principal da Igreja', 'tipo': 'Igreja', 'capacidade': 30, 'cep': '36010001', 'endereco': 'Sede', 'lat': -21.7600, 'lon': -43.3400}
@@ -1207,6 +1260,41 @@ def dar_baixa_avulsa_peps(id_item, qtd_desejada):
         st.session_state.db_lotes.at[idx, 'quantidade'] -= qtd_a_retirar
         qtd_pendente -= qtd_a_retirar
     return True, "Baixa registrada no estoque real."
+
+
+def criar_agendamento_entrega(dados_agendamento):
+    dados = dados_agendamento.copy()
+    dados['id_agendamento'] = len(st.session_state.db_agendamentos) + 1
+    dados['status'] = 'Agendado'
+    dados['data_criacao'] = datetime.datetime.now()
+    st.session_state.db_agendamentos = pd.concat([st.session_state.db_agendamentos, pd.DataFrame([dados])], ignore_index=True)
+    return True
+
+
+def concluir_agendamento_entrega(id_agendamento):
+    linhas = st.session_state.db_agendamentos[st.session_state.db_agendamentos['id_agendamento'] == id_agendamento]
+    if linhas.empty:
+        return False
+    linha = linhas.iloc[0]
+    nova_entrega = {
+        'id_entrega': len(st.session_state.db_entregas) + 1,
+        'id_familia': linha['id_familia'],
+        'nome_familia': linha['nome_familia'],
+        'data': datetime.date.today(),
+        'tipo': f"{linha['tipo_entrega']} - {linha.get('observacoes', '') or ''}".strip()
+    }
+    st.session_state.db_entregas = pd.concat([st.session_state.db_entregas, pd.DataFrame([nova_entrega])], ignore_index=True)
+    salvar_entrega_neon(nova_entrega)
+    st.session_state.db_agendamentos.loc[st.session_state.db_agendamentos['id_agendamento'] == id_agendamento, 'status'] = 'Concluído'
+    return True
+
+
+def cancelar_agendamento_entrega(id_agendamento):
+    if id_agendamento in st.session_state.db_agendamentos['id_agendamento'].values:
+        st.session_state.db_agendamentos.loc[st.session_state.db_agendamentos['id_agendamento'] == id_agendamento, 'status'] = 'Cancelado'
+        return True
+    return False
+
 
 def renderizar_mapa_alto_contraste(df_mapa, zoom_level=12, estilo_selecionado="Escuro"):
     """
@@ -1355,7 +1443,7 @@ def main_app():
         
         st.markdown("---")
 
-        opcoes_base = ["Dashboard", "Despensa", "Famílias", "Parceiros", "Voluntários", "Histórico", "Modo SOS", "Mapa Famílias", "Relatórios"]
+        opcoes_base = ["Dashboard", "Despensa", "Famílias", "Agendamentos", "Parceiros", "Voluntários", "Histórico", "Modo SOS", "Mapa Famílias", "Relatórios"]
         
         # Carregar permissões de abas do usuário
         permissoes_abas = carregar_permissoes_abas_neon(st.session_state.user_login)
@@ -1365,12 +1453,7 @@ def main_app():
             opcoes_menu = permissoes_abas
         else:
             # Caso contrário, usar o padrão baseado no perfil
-            if st.session_state.user_role == 'master':
-                opcoes_menu = opcoes_base + ["Usuários"]
-            elif st.session_state.user_role == 'voluntario':
-                opcoes_menu = ["Despensa", "Famílias", "Mapa Famílias"]
-            else:
-                opcoes_menu = opcoes_base
+            opcoes_menu = obter_abas_padrao_por_perfil(st.session_state.user_role)
 
         menu_opcao = st.radio(
             "Navegação",
@@ -1743,6 +1826,70 @@ def main_app():
         else:
             st.info("Nenhuma família cadastrada.")
 
+    elif menu_opcao == "Agendamentos":
+        st.markdown("<div class='title-modern'>Agendamentos de Entrega</div>", unsafe_allow_html=True)
+        st.markdown("<p class='subtitle-modern'>Agende a retirada ou entrega de itens e acompanhe o status de cada pedido.</p>", unsafe_allow_html=True)
+
+        with st.expander("➕ Novo Agendamento", expanded=True):
+            with st.form("form_agendamento", clear_on_submit=True):
+                familia_selecionada = st.selectbox(
+                    "Família",
+                    options=st.session_state.db_familias['id_familia'].tolist() if not st.session_state.db_familias.empty else [],
+                    format_func=lambda x: f"{st.session_state.db_familias[st.session_state.db_familias['id_familia'] == x]['nome'].iloc[0]}"
+                    if not st.session_state.db_familias[st.session_state.db_familias['id_familia'] == x].empty else str(x)
+                )
+                data_agendada = st.date_input("Data da Entrega", value=datetime.date.today())
+                hora_agendada = st.time_input("Horário da Entrega", value=datetime.time(9, 0))
+                tipo_entrega = st.radio("Tipo de Entrega", ["Presencial na Igreja", "Residência"], horizontal=True)
+                voluntario = st.text_input("Responsável/Voluntário (opcional)")
+                observacoes = st.text_area("Observações", help="Use este campo para itens combinados ou observações especiais.")
+
+                if st.form_submit_button("Agendar Entrega", type="primary", use_container_width=True):
+                    if familia_selecionada and data_agendada:
+                        familia = st.session_state.db_familias[st.session_state.db_familias['id_familia'] == familia_selecionada].iloc[0]
+                        criar_agendamento_entrega({
+                            'id_familia': familia_selecionada,
+                            'nome_familia': familia['nome'],
+                            'data_agendada': data_agendada,
+                            'hora_agendada': hora_agendada.strftime('%H:%M'),
+                            'tipo_entrega': tipo_entrega,
+                            'voluntario': voluntario or '-',
+                            'observacoes': observacoes or ''
+                        })
+                        st.success(f"✅ Entrega agendada para {familia['nome']} em {data_agendada.strftime('%d/%m/%Y')}.")
+                        st.rerun()
+                    else:
+                        st.error("Selecione a família e a data da entrega.")
+
+        st.markdown("---")
+        if st.session_state.db_agendamentos.empty:
+            st.info("Não há agendamentos registrados.")
+        else:
+            agendamentos_exibicao = st.session_state.db_agendamentos.copy()
+            agendamentos_exibicao['data_agendada'] = pd.to_datetime(agendamentos_exibicao['data_agendada']).dt.strftime('%d/%m/%Y')
+            agendamentos_exibicao['data_criacao'] = pd.to_datetime(agendamentos_exibicao['data_criacao']).dt.strftime('%d/%m/%Y %H:%M')
+            st.dataframe(
+                agendamentos_exibicao[['id_agendamento', 'nome_familia', 'data_agendada', 'hora_agendada', 'tipo_entrega', 'voluntario', 'status']],
+                use_container_width=True,
+                hide_index=True
+            )
+
+            for _, ag in st.session_state.db_agendamentos.sort_values(by=['data_agendada', 'hora_agendada']).iterrows():
+                if ag['status'] == 'Agendado':
+                    col1, col2 = st.columns([2, 1])
+                    with col1:
+                        st.markdown(f"**#{int(ag['id_agendamento'])} — {ag['nome_familia']}** — {ag['data_agendada']} às {ag['hora_agendada']} ({ag['tipo_entrega']})")
+                        st.markdown(f"<small>{ag['observacoes'] or 'Sem observações'} | Voluntário: {ag['voluntario']}</small>", unsafe_allow_html=True)
+                    with col2:
+                        if st.button(f"Concluir", key=f"concluir_ag_{ag['id_agendamento']}", use_container_width=True):
+                            concluir_agendamento_entrega(ag['id_agendamento'])
+                            st.success("Agendamento concluído e registrado como entrega.")
+                            st.rerun()
+                        if st.button(f"Cancelar", key=f"cancelar_ag_{ag['id_agendamento']}", use_container_width=True):
+                            cancelar_agendamento_entrega(ag['id_agendamento'])
+                            st.warning("Agendamento cancelado.")
+                            st.rerun()
+
     elif menu_opcao == "Parceiros":
         st.markdown("<div class='title-modern'>Cadastro de Parceiros</div>", unsafe_allow_html=True)
         st.markdown("<p class='subtitle-modern'>Registre parceiros que ajudam a despensa e receba alertas de agradecimento.</p>", unsafe_allow_html=True)
@@ -1837,16 +1984,17 @@ def main_app():
                 nome_novo = st.text_input("Nome Completo")
                 login_novo = st.text_input("Login / Usuário")
                 senha_nova = st.text_input("Senha", type="password")
-                perfil_novo = st.selectbox("Perfil", ["master", "admin", "voluntario"])
+                perfil_novo = st.selectbox("Perfil", list(PERFIS_DISPONIVEIS.keys()))
                 ativo_novo = st.checkbox("Ativo", value=True)
 
                 if st.form_submit_button("Cadastrar Usuário", type="primary", use_container_width=True):
                     if nome_novo and login_novo and senha_nova:
+                        perfil_interno = PERFIS_DISPONIVEIS.get(perfil_novo, perfil_novo)
                         novo_usuario = {
                             'login': login_novo.lower().strip(),
                             'nome': nome_novo.strip(),
                             'senha': senha_nova,
-                            'perfil': perfil_novo,
+                            'perfil': perfil_interno,
                             'ativo': ativo_novo
                         }
                         if salvar_usuario_neon(novo_usuario):
@@ -1894,7 +2042,7 @@ def main_app():
             )
             
             if usuario_sel:
-                abas_disponiveis = ["Dashboard", "Despensa", "Famílias", "Parceiros", "Voluntários", "Histórico", "Modo SOS", "Mapa Famílias", "Relatórios", "Usuários"]
+                abas_disponiveis = ["Dashboard", "Despensa", "Famílias", "Agendamentos", "Parceiros", "Voluntários", "Histórico", "Modo SOS", "Mapa Famílias", "Relatórios", "Usuários"]
                 permissoes_atuais = carregar_permissoes_abas_neon(usuario_sel)
                 
                 st.markdown(f"#### Customizando: {usuario_sel}")
