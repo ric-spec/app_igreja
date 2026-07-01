@@ -209,7 +209,6 @@ def geocodificar_endereco(endereco_busca):
     return None, None
 
 
-@st.cache_data(ttl=300)
 def carregar_catalogo_neon():
     engine = get_engine()
     if engine is None:
@@ -226,7 +225,6 @@ def carregar_catalogo_neon():
         return pd.DataFrame(columns=["id_item", "nome", "qtd_por_cesta", "categoria"])
 
 
-@st.cache_data(ttl=300)
 def carregar_lotes_neon():
     engine = get_engine()
     if engine is None:
