@@ -371,6 +371,36 @@ def carregar_entregas_neon():
         return None
 
 
+def carregar_voluntarios_neon():
+    """Carrega os voluntários ativos a partir do Neon."""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return None
+
+        query = """
+            SELECT id_voluntario, nome, telefone, email, cep, endereco,
+                   possui_veiculo, tipo_veiculo, dias_disponiveis,
+                   horario_inicio, horario_fim, observacoes, data_cadastro, ativo
+            FROM voluntarios
+            WHERE ativo = TRUE
+            ORDER BY id_voluntario;
+        """
+        df = pd.read_sql_query(query, engine)
+        if df.empty:
+            return df
+        if 'possui_veiculo' in df.columns:
+            df['possui_veiculo'] = df['possui_veiculo'].fillna(False).astype(bool)
+        if 'ativo' in df.columns:
+            df['ativo'] = df['ativo'].fillna(True)
+        if 'data_cadastro' in df.columns:
+            df['data_cadastro'] = pd.to_datetime(df['data_cadastro'], errors='coerce')
+        return df
+    except Exception as e:
+        logging.warning(f"Não foi possível carregar voluntários do Neon: {e}")
+        return None
+
+
 def refresh_estoque_neon(force=False):
     """Atualiza o estoque local a partir dos dados do Neon."""
     now = datetime.datetime.now()
@@ -383,6 +413,7 @@ def refresh_estoque_neon(force=False):
     lot = carregar_lotes_neon()
     fam = carregar_familias_neon()
     ent = carregar_entregas_neon()
+    vol = carregar_voluntarios_neon()
     if cat is not None:
         st.session_state.db_catalogo = cat
     if lot is not None:
@@ -391,6 +422,8 @@ def refresh_estoque_neon(force=False):
         st.session_state.db_familias = fam
     if ent is not None:
         st.session_state.db_entregas = ent
+    if vol is not None:
+        st.session_state.db_voluntarios = vol
     st.session_state.last_estoque_refresh = now
 
 # ==========================================
