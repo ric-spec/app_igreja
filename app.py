@@ -971,6 +971,7 @@ def obter_abas_padrao_por_perfil(perfil):
         "Dashboard",
         "Despensa",
         "Famílias",
+        "Agendamentos",
         "Parceiros",
         "Voluntários",
         "Histórico",
