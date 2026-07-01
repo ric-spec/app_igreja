@@ -2293,7 +2293,25 @@ def main_app():
             st.markdown(f"<p class='subtitle-modern'>{len(df_vol_exib)} voluntário(s) encontrado(s)</p>", unsafe_allow_html=True)
 
             for _, vol in df_vol_exib.iterrows():
-                st.markdown(montar_html_card_voluntario(vol), unsafe_allow_html=True)
+                with st.container():
+                    col_main, col_badge = st.columns([4, 1.2])
+                    with col_main:
+                        st.markdown(f"### {vol['nome']}")
+                        st.write(
+                            f"📞 {vol['telefone']}"
+                            + (f"  |  ✉️ {vol['email']}" if str(vol.get('email', '-')) != '-' else "")
+                        )
+                        st.write(f"📍 {vol['endereco']}")
+                        st.caption(f"📅 Disponível: {vol['dias_disponiveis']}  |  ⏰ {vol['horario_inicio']} às {vol['horario_fim']}")
+                        if str(vol.get('observacoes', '-')) != '-':
+                            st.write(f"💬 {vol['observacoes']}")
+                    with col_badge:
+                        if bool(vol.get('possui_veiculo', False)):
+                            st.success(f"🚗 {vol['tipo_veiculo']}")
+                        else:
+                            st.info("🚶 Sem veículo")
+
+                    st.markdown("---")
 
                 if st.button(f"🗑️ Remover {vol['nome']}", key=f"del_vol_{vol['id_voluntario']}", use_container_width=False):
                     st.session_state.db_voluntarios.loc[
