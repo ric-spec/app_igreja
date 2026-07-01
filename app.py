@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import datetime
 import hashlib
+import html
 import requests
 import pydeck as pdk
 from streamlit_geolocation import streamlit_geolocation
@@ -1337,6 +1338,44 @@ def criar_agendamento_entrega(dados_agendamento):
     return True
 
 
+def montar_html_card_voluntario(vol):
+    """Gera o HTML do card de voluntário com valores escapados para evitar quebra do layout."""
+    nome = html.escape(str(vol.get('nome', '-')))
+    telefone = html.escape(str(vol.get('telefone', '-')))
+    email = html.escape(str(vol.get('email', '-')))
+    endereco = html.escape(str(vol.get('endereco', '-')))
+    observacoes = html.escape(str(vol.get('observacoes', '-')))
+    dias = html.escape(str(vol.get('dias_disponiveis', '-')))
+    horario_inicio = html.escape(str(vol.get('horario_inicio', '-')))
+    horario_fim = html.escape(str(vol.get('horario_fim', '-')))
+    tipo_veiculo = html.escape(str(vol.get('tipo_veiculo', '-')))
+
+    if vol.get('possui_veiculo', False):
+        tag_veiculo = f"<span class='badge badge-success'>🚗 {tipo_veiculo}</span>"
+    else:
+        tag_veiculo = "<span class='badge badge-info'>🚶 Sem veículo</span>"
+
+    contato_html = f"  |  ✉️ {email}" if email != '-' else ""
+    observacoes_html = f"<div style='font-size:12px; color:#6B7280; margin-top:4px;'>💬 {observacoes}</div>" if observacoes != '-' else ""
+
+    return f"""
+        <div class="bento-card">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px;">
+                <div>
+                    <div class="title-modern" style="font-size: 18px; margin-bottom: 2px;">{nome}</div>
+                    <div class="subtitle-modern">📞 {telefone}{contato_html}</div>
+                    <div class="subtitle-modern">📍 {endereco}</div>
+                    <div style="margin-top: 6px; font-size: 13px; color: #374151;">
+                        📅 <b>Disponível:</b> {dias} &nbsp;|&nbsp; ⏰ {horario_inicio} às {horario_fim}
+                    </div>
+                    {observacoes_html}
+                </div>
+                <div>{tag_veiculo}</div>
+            </div>
+        </div>
+    """
+
+
 def concluir_agendamento_entrega(id_agendamento):
     linhas = st.session_state.db_agendamentos[st.session_state.db_agendamentos['id_agendamento'] == id_agendamento]
     if linhas.empty:
@@ -2254,27 +2293,7 @@ def main_app():
             st.markdown(f"<p class='subtitle-modern'>{len(df_vol_exib)} voluntário(s) encontrado(s)</p>", unsafe_allow_html=True)
 
             for _, vol in df_vol_exib.iterrows():
-                tag_veiculo = (
-                    f"<span class='badge badge-success'>🚗 {vol['tipo_veiculo']}</span>"
-                    if vol['possui_veiculo']
-                    else "<span class='badge badge-info'>🚶 Sem veículo</span>"
-                )
-                st.markdown(f"""
-                    <div class="bento-card">
-                        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px;">
-                            <div>
-                                <div class="title-modern" style="font-size: 18px; margin-bottom: 2px;">{vol['nome']}</div>
-                                <div class="subtitle-modern">📞 {vol['telefone']}{"  |  ✉️ " + vol['email'] if vol['email'] != '-' else ""}</div>
-                                <div class="subtitle-modern">📍 {vol['endereco']}</div>
-                                <div style="margin-top: 6px; font-size: 13px; color: #374151;">
-                                    📅 <b>Disponível:</b> {vol['dias_disponiveis']} &nbsp;|&nbsp; ⏰ {vol['horario_inicio']} às {vol['horario_fim']}
-                                </div>
-                                {"<div style='font-size:12px; color:#6B7280; margin-top:4px;'>💬 " + vol['observacoes'] + "</div>" if vol['observacoes'] != '-' else ""}
-                            </div>
-                            <div>{tag_veiculo}</div>
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
+                st.markdown(montar_html_card_voluntario(vol), unsafe_allow_html=True)
 
                 if st.button(f"🗑️ Remover {vol['nome']}", key=f"del_vol_{vol['id_voluntario']}", use_container_width=False):
                     st.session_state.db_voluntarios.loc[
