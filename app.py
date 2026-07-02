@@ -989,16 +989,28 @@ def carregar_permissoes_abas_neon(login):
         
         query = "SELECT abas_acesso FROM usuarios WHERE login = %(login)s LIMIT 1;"
         df = pd.read_sql_query(query, engine, params={'login': login})
-        if df.empty or df.iloc[0]['abas_acesso'] is None:
+        if df.empty:
             return None
         
         abas_str = df.iloc[0]['abas_acesso']
+        if abas_str is None:
+            return None
         if isinstance(abas_str, str):
-            return [aba.strip() for aba in abas_str.split(',') if aba.strip()]
+            abas = [aba.strip() for aba in abas_str.split(',') if aba.strip()]
+            return abas if abas else None
         return None
     except Exception as e:
         logging.warning(f"Erro ao carregar permissões de abas: {e}")
         return None
+
+
+def obter_abas_permitidas(login, perfil):
+    """Retorna as abas que o usuário pode acessar, usando permissões customizadas ou o padrão do perfil."""
+    permissoes_abas = carregar_permissoes_abas_neon(login)
+    if permissoes_abas:
+        return permissoes_abas
+    abas_padrao = obter_abas_padrao_por_perfil(perfil)
+    return abas_padrao or ["Dashboard"]
 
 
 def salvar_permissoes_abas_neon(login, abas_permitidas):
@@ -1571,24 +1583,23 @@ def main_app():
         
         st.markdown("---")
 
-        opcoes_base = ["Dashboard", "Despensa", "Famílias", "Agendamentos", "Parceiros", "Voluntários", "Histórico", "Modo SOS", "Mapa Famílias", "Relatórios"]
-        
-        # Carregar permissões de abas do usuário
-        permissoes_abas = carregar_permissoes_abas_neon(st.session_state.user_login)
-        
-        # Se houver permissões específicas, usar somente elas
-        if permissoes_abas:
-            opcoes_menu = permissoes_abas
-        else:
-            # Caso contrário, usar o padrão baseado no perfil
-            opcoes_menu = obter_abas_padrao_por_perfil(st.session_state.user_role)
+        opcoes_menu = obter_abas_permitidas(st.session_state.user_login, st.session_state.user_role)
+
+        if 'menu_opcao' not in st.session_state or st.session_state.menu_opcao not in opcoes_menu:
+            st.session_state.menu_opcao = opcoes_menu[0]
 
         menu_opcao = st.radio(
             "Navegação",
             opcoes_menu,
-            label_visibility="collapsed"
+            index=opcoes_menu.index(st.session_state.menu_opcao),
+            label_visibility="collapsed",
+            key="menu_opcao"
         )
-        
+
+        if menu_opcao not in opcoes_menu:
+            st.error("Aba não autorizada para o seu perfil.")
+            st.stop()
+
         st.markdown("---")
         st.info(f"📅 {datetime.date.today().strftime('%d/%m/%Y')}")
         if st.button("🚪 Sair do Sistema", use_container_width=True):
