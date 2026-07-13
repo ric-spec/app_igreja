@@ -366,7 +366,7 @@ def main():
 
     # Conteúdo Sobre o projeto (página principal)
     if st.session_state.current_page == "Sobre o projeto":
-        st.markdown("<div class='subtitle'>Página de apoio para famílias que precisam de cesta básica e informação direta.</div>", unsafe_allow_html=True)
+        st.markdown("<div class='subtitle'>Página de apoio para famílias que precisam de apoio e ajuda direta.</div>", unsafe_allow_html=True)
         
         st.markdown(
             """

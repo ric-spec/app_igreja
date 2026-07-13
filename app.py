@@ -1815,6 +1815,19 @@ def main_app():
                 data_cadastro_text = ''
                 if pd.notnull(fam.get('data_cadastro')):
                     data_cadastro_text = pd.to_datetime(fam['data_cadastro']).strftime('%d/%m/%Y')
+                entregas_fam = st.session_state.db_entregas[st.session_state.db_entregas['id_familia'] == fam['id_familia']]
+                historico_texto = ''
+                itens_ultima_texto = ''
+                if not entregas_fam.empty:
+                    ultima = entregas_fam.sort_values(by='data', ascending=False).iloc[0]
+                    data_ult = pd.to_datetime(ultima['data']).strftime('%d/%m/%Y')
+                    historico_texto = f"Última entrega: {data_ult} — {ultima['tipo']}"
+                    if ultima['tipo'] == 'Cesta Padrão':
+                        itens_cesta = st.session_state.db_catalogo[st.session_state.db_catalogo['qtd_por_cesta'] > 0][['nome', 'qtd_por_cesta']]
+                        itens_ultima_texto = 'Itens: ' + ', '.join([f"{row['qtd_por_cesta']}x {row['nome']}" for _, row in itens_cesta.iterrows()])
+                    else:
+                        itens_ultima_texto = 'Itens: ' + str(ultima['tipo']).replace('Avulso: ', '')
+
                 st.markdown(f"""
                     <div class="bento-card">
                         <div style="display: flex; justify-content: space-between; align-items: flex-start;">
@@ -1828,6 +1841,8 @@ def main_app():
                                 </div>
                                 <div style="font-size: 12px; margin-top: 5px; color: #94a3b8;">{status_mapa}</div>
                                 <div style="font-size: 12px; color: #94a3b8;">{('Cadastro: ' + data_cadastro_text) if data_cadastro_text else ''}</div>
+                                {f'<div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">{historico_texto}</div>' if historico_texto else ''}
+                                {f'<div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">{itens_ultima_texto}</div>' if itens_ultima_texto else ''}
                             </div>
                             {tag_prio}
                         </div>
@@ -1850,9 +1865,19 @@ def main_app():
                         st.markdown(f"""
                             <div style="background: #111827; border: 2px solid var(--primary); border-radius: 12px; padding: 20px; margin: 8px 0;">
                                 <h4 style="color: #bfdbfe; margin: 0 0 4px 0;">📦 Painel de Entrega — {fam['nome']}</h4>
-                                <p style="color: #93c5fd; font-size: 13px; margin: 0;">Escolha o tipo de entrega abaixo</p>
+                                <p style="color: #93c5fd; font-size: 13px; margin: 0;">Escolha o tipo de entrega abaixo e, se necessário, adicione itens esquecidos.</p>
                             </div>
                         """, unsafe_allow_html=True)
+
+                        entregas_fam = st.session_state.db_entregas[st.session_state.db_entregas['id_familia'] == fam['id_familia']]
+                        if not entregas_fam.empty:
+                            st.markdown("**Itens já cadastrados / histórico recente:**")
+                            entregas_recentes = entregas_fam.sort_values(by='data', ascending=False).head(3)
+                            for _, ent in entregas_recentes.iterrows():
+                                data_ent = pd.to_datetime(ent['data']).strftime('%d/%m/%Y')
+                                st.markdown(f"- {data_ent}: {ent['tipo']}")
+
+                        st.markdown("**Se esqueceu algum item? Use a aba de Itens Avulsos para registrar extras.**")
 
                         # --- Calcula estoque disponível ---
                         df_estoque = pd.merge(
