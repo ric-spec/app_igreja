@@ -1074,7 +1074,7 @@ def obter_abas_padrao_por_perfil(perfil):
             "Relatórios"
         ]
     if perfil == "controle_estoque":
-        return ["Dashboard", "Despensa", "Relatórios"]
+        return ["Dashboard", "Despensa", "Famílias", "Relatórios"]
     if perfil == "voluntario":
         return ["Dashboard", "Famílias", "Agendamentos", "Mapa Famílias", "Histórico"]
 

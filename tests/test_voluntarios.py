@@ -98,3 +98,11 @@ def test_carregar_voluntarios_neon_returns_dataframe(monkeypatch):
 
     assert not result.empty
     assert result.iloc[0]["nome"] == "Ana"
+
+
+def test_todos_os_perfis_tem_acesso_a_familias():
+    app = load_app_module()
+
+    for perfil in set(app.PERFIS_DISPONIVEIS.values()):
+        abas = app.obter_abas_padrao_por_perfil(perfil)
+        assert "Famílias" in abas
