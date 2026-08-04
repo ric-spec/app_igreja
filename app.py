@@ -1973,10 +1973,14 @@ def main_app():
         # LISTAGEM DAS FAMÍLIAS
         if not st.session_state.db_familias.empty:
             for _, fam in st.session_state.db_familias.iterrows():
-                tag_prio = f"<span class='pill-tag-alert'>Prioridade Alta</span>" if fam['prioridade'] == 'Alta' else f"<span class='pill-tag-neutral'>Normal</span>"
+                prioridade = str(fam.get('prioridade', '') or '').strip().lower()
+                if prioridade == 'alta':
+                    tag_prio = "<span class='badge badge-danger'>Prioridade Alta</span>"
+                else:
+                    tag_prio = "<span class='badge badge-info'>Normal</span>"
                 
                 # Verifica se está no mapa
-                status_mapa = "📍 No Mapa" if pd.notnull(fam['lat']) else "⚠️ <b>Sem Mapa</b> (Exclua e cadastre com Lat/Lon)"
+                status_mapa = "📍 No Mapa" if pd.notnull(fam.get('lat')) else "⚠️ <b>Sem Mapa</b> (Exclua e cadastre com Lat/Lon)"
                 
                 data_cadastro_text = ''
                 if pd.notnull(fam.get('data_cadastro')):
