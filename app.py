@@ -446,6 +446,29 @@ def carregar_voluntarios_neon():
         return None
 
 
+def carregar_baixas_estoque_neon():
+    """Carrega o histórico de baixas de estoque a partir do Neon."""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return pd.DataFrame(columns=['id_baixa', 'nome_item', 'quantidade', 'familia_nome', 'usuario_login', 'data_baixa'])
+
+        query = """
+            SELECT id_baixa, nome_item, quantidade, familia_nome, usuario_login, data_baixa
+            FROM baixas_estoque
+            ORDER BY data_baixa DESC;
+        """
+        df = pd.read_sql_query(query, engine)
+        if df.empty:
+            return df
+        if 'data_baixa' in df.columns:
+            df['data_baixa'] = pd.to_datetime(df['data_baixa'], errors='coerce')
+        return df
+    except Exception as e:
+        logging.warning(f"Não foi possível carregar baixas do Neon: {e}")
+        return pd.DataFrame(columns=['id_baixa', 'nome_item', 'quantidade', 'familia_nome', 'usuario_login', 'data_baixa'])
+
+
 def refresh_estoque_neon(force=False):
     """Atualiza o estoque local a partir dos dados do Neon."""
     now = datetime.datetime.now()
@@ -1796,6 +1819,23 @@ def main_app():
             st.dataframe(df_exibicao[['Produto', 'Qtd Disponível', 'Vence em', 'Alerta']], use_container_width=True, hide_index=True)
         else:
             st.info("A despensa está vazia.")
+
+        st.markdown("---")
+        st.markdown("<div class='title-modern'>Histórico de Baixas</div>", unsafe_allow_html=True)
+        df_baixas = carregar_baixas_estoque_neon()
+        if not df_baixas.empty:
+            df_baixas = df_baixas.copy()
+            df_baixas['data_baixa'] = pd.to_datetime(df_baixas['data_baixa'], errors='coerce').dt.strftime('%d/%m/%Y %H:%M')
+            df_baixas = df_baixas.rename(columns={
+                'nome_item': 'Item',
+                'quantidade': 'Quantidade',
+                'familia_nome': 'Família',
+                'usuario_login': 'Usuário',
+                'data_baixa': 'Data/Hora',
+            })
+            st.dataframe(df_baixas[['Item', 'Quantidade', 'Família', 'Usuário', 'Data/Hora']], use_container_width=True, hide_index=True)
+        else:
+            st.info("Nenhuma baixa registrada até o momento.")
 
     elif menu_opcao == "Famílias":
         c1, c2 = st.columns([3, 1])
