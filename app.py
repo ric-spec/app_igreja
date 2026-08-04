@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import datetime
 import hashlib
+import html
 import requests
 import pydeck as pdk
 from streamlit_geolocation import streamlit_geolocation
@@ -41,7 +42,7 @@ def carregar_usuario_por_login(login):
         if engine is None:
             return None
 
-        query = "SELECT id_usuario, login, nome, senha_hash, perfil, ativo FROM usuarios WHERE login = :login LIMIT 1;"
+        query = "SELECT id_usuario, login, nome, senha_hash, perfil, ativo FROM usuarios WHERE login = %(login)s LIMIT 1;"
         df = pd.read_sql_query(query, engine, params={'login': login.lower().strip()})
         if df.empty:
             return None
@@ -127,6 +128,8 @@ def salvar_familia_neon(dados_familia):
 
         dados_familia = dados_familia.copy()
         dados_familia.pop('id_familia', None)
+        if 'data_cadastro' not in dados_familia or not dados_familia['data_cadastro']:
+            dados_familia['data_cadastro'] = datetime.datetime.now()
         df = pd.DataFrame([dados_familia])
         df.to_sql('familias', engine, if_exists='append', index=False)
         st.success("✅ Família salva no Neon com sucesso!")
@@ -271,6 +274,100 @@ def salvar_lote_neon(dados_lote):
         return False
 
 
+def sincronizar_lotes_neon():
+    """Sincroniza o estado atual do estoque para a tabela lotes no Neon."""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return False
+
+        df = st.session_state.db_lotes.copy()
+        df = df.where(pd.notna(df), None)
+        df.to_sql('lotes', engine, if_exists='replace', index=False)
+        return True
+    except Exception as e:
+        logging.warning(f"Não foi possível sincronizar lotes no Neon: {e}")
+        return False
+
+
+def garantir_tabela_baixas_estoque(engine):
+    """Cria a tabela de baixas de estoque caso ela ainda não exista."""
+    try:
+        with engine.connect() as conn:
+            from sqlalchemy import text
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS baixas_estoque (
+                    id_baixa SERIAL PRIMARY KEY,
+                    id_item INTEGER,
+                    id_lote INTEGER,
+                    nome_item VARCHAR(255),
+                    quantidade INTEGER,
+                    vencimento DATE,
+                    tipo_movimentacao VARCHAR(100),
+                    usuario_nome VARCHAR(255),
+                    usuario_login VARCHAR(100),
+                    familia_id INTEGER,
+                    familia_nome VARCHAR(255),
+                    data_baixa TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """))
+            conn.commit()
+        return True
+    except Exception as e:
+        logging.warning(f"Não foi possível garantir a tabela baixas_estoque: {e}")
+        return False
+
+
+def registrar_baixa_estoque(id_item, qtd_baixada, id_lote, nome_item, vencimento, tipo_movimentacao="Entrega", usuario_nome=None, usuario_login=None, familia_id=None, familia_nome=None):
+    """Registra uma baixa de estoque na tabela de movimentações."""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return False
+
+        garantir_tabela_baixas_estoque(engine)
+
+        dados_baixa = {
+            'id_item': id_item,
+            'id_lote': id_lote,
+            'nome_item': nome_item,
+            'quantidade': int(qtd_baixada),
+            'vencimento': vencimento,
+            'tipo_movimentacao': tipo_movimentacao,
+            'usuario_nome': usuario_nome,
+            'usuario_login': usuario_login,
+            'familia_id': familia_id,
+            'familia_nome': familia_nome,
+            'data_baixa': datetime.datetime.now(),
+        }
+        df = pd.DataFrame([dados_baixa])
+        df.to_sql('baixas_estoque', engine, if_exists='append', index=False)
+        return True
+    except Exception as e:
+        logging.warning(f"Não foi possível registrar baixa no banco: {e}")
+        return False
+
+
+def salvar_parceiro_neon(dados_parceiro):
+    """Salva dados de parceiros no Neon"""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return False
+
+        dados_parceiro = dados_parceiro.copy()
+        dados_parceiro.pop('id_parceiro', None)
+        if 'data_cadastro' not in dados_parceiro or not dados_parceiro['data_cadastro']:
+            dados_parceiro['data_cadastro'] = datetime.datetime.now()
+        df = pd.DataFrame([dados_parceiro])
+        df.to_sql('parceiros', engine, if_exists='append', index=False)
+        st.success("✅ Parceiro salvo no Neon com sucesso!")
+        return True
+    except Exception as e:
+        st.warning(f"⚠️ Erro ao salvar parceiro no Neon: {e}")
+        return False
+
+
 def carregar_catalogo_neon():
     """Carrega o catálogo de itens a partir do Neon."""
     try:
@@ -315,10 +412,17 @@ def carregar_familias_neon():
         if engine is None:
             return None
 
-        query = "SELECT id_familia, nome, dependentes, prioridade, cep, endereco, lat, lon, igreja, pastor, ultima_entrega FROM familias WHERE ativo = TRUE ORDER BY id_familia;"
+        query = "SELECT id_familia, nome, dependentes, prioridade, telefone, atendimento_tipo, cep, endereco, lat, lon, igreja, pastor, ultima_entrega, data_cadastro FROM familias WHERE ativo = TRUE ORDER BY id_familia;"
         df = pd.read_sql_query(query, engine)
+
         if 'dependentes' in df.columns:
             df['dependentes'] = df['dependentes'].fillna(0).astype(int)
+        if 'telefone' in df.columns:
+            df['telefone'] = df['telefone'].fillna('')
+        if 'atendimento_tipo' in df.columns:
+            df['atendimento_tipo'] = df['atendimento_tipo'].fillna('Esporádico')
+        if 'data_cadastro' in df.columns:
+            df['data_cadastro'] = pd.to_datetime(df['data_cadastro'], errors='coerce')
         return df
     except Exception as e:
         logging.warning(f"Não foi possível carregar famílias do Neon: {e}")
@@ -342,6 +446,59 @@ def carregar_entregas_neon():
         return None
 
 
+def carregar_voluntarios_neon():
+    """Carrega os voluntários ativos a partir do Neon."""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return None
+
+        query = """
+            SELECT id_voluntario, nome, telefone, email, cep, endereco,
+                   possui_veiculo, tipo_veiculo, dias_disponiveis,
+                   horario_inicio, horario_fim, observacoes, data_cadastro, ativo
+            FROM voluntarios
+            WHERE ativo = TRUE
+            ORDER BY id_voluntario;
+        """
+        df = pd.read_sql_query(query, engine)
+        if df.empty:
+            return df
+        if 'possui_veiculo' in df.columns:
+            df['possui_veiculo'] = df['possui_veiculo'].fillna(False).astype(bool)
+        if 'ativo' in df.columns:
+            df['ativo'] = df['ativo'].fillna(True)
+        if 'data_cadastro' in df.columns:
+            df['data_cadastro'] = pd.to_datetime(df['data_cadastro'], errors='coerce')
+        return df
+    except Exception as e:
+        logging.warning(f"Não foi possível carregar voluntários do Neon: {e}")
+        return None
+
+
+def carregar_baixas_estoque_neon():
+    """Carrega o histórico de baixas de estoque a partir do Neon."""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return pd.DataFrame(columns=['id_baixa', 'nome_item', 'quantidade', 'familia_nome', 'usuario_login', 'data_baixa'])
+
+        query = """
+            SELECT id_baixa, nome_item, quantidade, familia_nome, usuario_login, data_baixa
+            FROM baixas_estoque
+            ORDER BY data_baixa DESC;
+        """
+        df = pd.read_sql_query(query, engine)
+        if df.empty:
+            return df
+        if 'data_baixa' in df.columns:
+            df['data_baixa'] = pd.to_datetime(df['data_baixa'], errors='coerce')
+        return df
+    except Exception as e:
+        logging.warning(f"Não foi possível carregar baixas do Neon: {e}")
+        return pd.DataFrame(columns=['id_baixa', 'nome_item', 'quantidade', 'familia_nome', 'usuario_login', 'data_baixa'])
+
+
 def refresh_estoque_neon(force=False):
     """Atualiza o estoque local a partir dos dados do Neon."""
     now = datetime.datetime.now()
@@ -354,6 +511,7 @@ def refresh_estoque_neon(force=False):
     lot = carregar_lotes_neon()
     fam = carregar_familias_neon()
     ent = carregar_entregas_neon()
+    vol = carregar_voluntarios_neon()
     if cat is not None:
         st.session_state.db_catalogo = cat
     if lot is not None:
@@ -362,6 +520,8 @@ def refresh_estoque_neon(force=False):
         st.session_state.db_familias = fam
     if ent is not None:
         st.session_state.db_entregas = ent
+    if vol is not None:
+        st.session_state.db_voluntarios = vol
     st.session_state.last_estoque_refresh = now
 
 # ==========================================
@@ -378,7 +538,9 @@ def inicializar_neon():
 
         # Lista de statements SQL separados para evitar timeout SSL
         schema_statements = [
-            "CREATE TABLE IF NOT EXISTS familias (id_familia SERIAL PRIMARY KEY, nome VARCHAR(255) NOT NULL, dependentes INTEGER, prioridade VARCHAR(50), cep VARCHAR(10), endereco TEXT, lat FLOAT, lon FLOAT, igreja VARCHAR(255), pastor VARCHAR(255), ultima_entrega TIMESTAMP, data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ativo BOOLEAN DEFAULT TRUE);",
+            "CREATE TABLE IF NOT EXISTS familias (id_familia SERIAL PRIMARY KEY, nome VARCHAR(255) NOT NULL, dependentes INTEGER, prioridade VARCHAR(50), telefone VARCHAR(30), atendimento_tipo VARCHAR(50), cep VARCHAR(10), endereco TEXT, lat FLOAT, lon FLOAT, igreja VARCHAR(255), pastor VARCHAR(255), ultima_entrega TIMESTAMP, data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ativo BOOLEAN DEFAULT TRUE);",
+            "ALTER TABLE familias ADD COLUMN IF NOT EXISTS telefone VARCHAR(30);",
+            "ALTER TABLE familias ADD COLUMN IF NOT EXISTS atendimento_tipo VARCHAR(50);",
             "CREATE TABLE IF NOT EXISTS entregas (id_entrega SERIAL PRIMARY KEY, id_familia INTEGER, nome_familia VARCHAR(255), data TIMESTAMP, tipo VARCHAR(255), itens TEXT, responsavel_entrega VARCHAR(255), data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (id_familia) REFERENCES familias(id_familia));",
             "CREATE TABLE IF NOT EXISTS sos_whatsapp (id_msg SERIAL PRIMARY KEY, telefone VARCHAR(20), nome VARCHAR(255), necessidade VARCHAR(255), pessoas INTEGER, cep VARCHAR(10), endereco TEXT, status VARCHAR(50), data_hora TIMESTAMP, respondido_por VARCHAR(255), data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
             "CREATE TABLE IF NOT EXISTS locais_acolhimento (id_local SERIAL PRIMARY KEY, nome VARCHAR(255), tipo VARCHAR(100), capacidade INTEGER, cep VARCHAR(10), endereco TEXT, lat FLOAT, lon FLOAT, ativo BOOLEAN DEFAULT TRUE, data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
@@ -386,9 +548,13 @@ def inicializar_neon():
             "CREATE TABLE IF NOT EXISTS atendimentos (id_atendimento SERIAL PRIMARY KEY, pessoa_nome VARCHAR(255), tipo_atendimento VARCHAR(255), descricao TEXT, data_atendimento TIMESTAMP, status VARCHAR(50), responsavel VARCHAR(255), data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
             "CREATE TABLE IF NOT EXISTS voluntarios (id_voluntario SERIAL PRIMARY KEY, nome VARCHAR(255) NOT NULL, telefone VARCHAR(20), email VARCHAR(255), cep VARCHAR(10), endereco TEXT, possui_veiculo BOOLEAN DEFAULT FALSE, tipo_veiculo VARCHAR(100), dias_disponiveis TEXT, horario_inicio TIME, horario_fim TIME, observacoes TEXT, data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ativo BOOLEAN DEFAULT TRUE);",
             "CREATE TABLE IF NOT EXISTS usuarios (id_usuario SERIAL PRIMARY KEY, login VARCHAR(100) UNIQUE NOT NULL, nome VARCHAR(255), senha_hash VARCHAR(255) NOT NULL, perfil VARCHAR(50) NOT NULL, ativo BOOLEAN DEFAULT TRUE, data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
+            "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS abas_acesso TEXT;",
             "CREATE TABLE IF NOT EXISTS catalogo (id_item SERIAL PRIMARY KEY, nome VARCHAR(255) NOT NULL, qtd_por_cesta INTEGER DEFAULT 1, categoria VARCHAR(100), ativo BOOLEAN DEFAULT TRUE, data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
             "CREATE TABLE IF NOT EXISTS lotes (id_lote SERIAL PRIMARY KEY, id_item INTEGER, nome_item VARCHAR(255), quantidade INTEGER, vencimento DATE, local_armazenagem VARCHAR(255), data_entrada TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ativo BOOLEAN DEFAULT TRUE, FOREIGN KEY (id_item) REFERENCES catalogo(id_item));",
+            "CREATE TABLE IF NOT EXISTS baixas_estoque (id_baixa SERIAL PRIMARY KEY, id_item INTEGER, id_lote INTEGER, nome_item VARCHAR(255), quantidade INTEGER, vencimento DATE, tipo_movimentacao VARCHAR(100), usuario_nome VARCHAR(255), usuario_login VARCHAR(100), familia_id INTEGER, familia_nome VARCHAR(255), data_baixa TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
+            "CREATE TABLE IF NOT EXISTS parceiros (id_parceiro SERIAL PRIMARY KEY, tipo_pessoa VARCHAR(50), nome VARCHAR(255) NOT NULL, documento VARCHAR(50), telefone VARCHAR(20), email VARCHAR(255), cep VARCHAR(10), endereco TEXT, contato_preferencial VARCHAR(20), alerta_mensal BOOLEAN DEFAULT FALSE, alerta_anual BOOLEAN DEFAULT FALSE, ultimo_agradecimento_mensal TIMESTAMP, ultimo_agradecimento_anual TIMESTAMP, itens_ajuda TEXT, data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ativo BOOLEAN DEFAULT TRUE);",
             "CREATE INDEX IF NOT EXISTS idx_familias_nome ON familias(nome);",
+            "CREATE INDEX IF NOT EXISTS idx_parceiros_nome ON parceiros(nome);",
             "CREATE INDEX IF NOT EXISTS idx_sos_status ON sos_whatsapp(status);",
             "CREATE INDEX IF NOT EXISTS idx_usuarios_login ON usuarios(login);"
         ]
@@ -806,6 +972,8 @@ if 'user_login' not in st.session_state:
     st.session_state.user_login = None
 if 'user_role' not in st.session_state:
     st.session_state.user_role = None
+if 'force_password_change' not in st.session_state:
+    st.session_state.force_password_change = False
 
 def login_page():
     # Centraliza o conteúdo vertical e horizontalmente usando colunas
@@ -826,7 +994,7 @@ def login_page():
             usuario = st.text_input("Usuário", placeholder="admin")
             senha = st.text_input("Senha", type="password", placeholder="••••••")
             submit = st.form_submit_button("Entrar no Sistema", use_container_width=True, type="primary")
-            
+
             if submit:
                 if usuario and senha:
                     usuario_info = validar_usuario(usuario, senha)
@@ -835,14 +1003,18 @@ def login_page():
                         st.session_state.current_user = usuario_info.get('nome', usuario_info['login'])
                         st.session_state.user_login = usuario_info['login']
                         st.session_state.user_role = usuario_info['perfil']
-                        st.toast("Login realizado com sucesso!", icon="🎉")
+                        st.session_state.force_password_change = is_default_password(usuario_info['login'], senha)
+                        if st.session_state.force_password_change:
+                            st.warning("Você está usando a senha inicial. Por favor, altere sua senha antes de continuar.")
+                        else:
+                            st.toast("Login realizado com sucesso!", icon="🎉")
                         time.sleep(0.5)
                         st.rerun()
                     else:
                         st.error("Credenciais inválidas. Tente novamente.")
                 else:
                     st.error("Preencha usuário e senha.")
-        
+
         st.markdown("""
             <div style='text-align: center; margin-top: 20px; color: #94A3B8; font-size: 12px;'>
                 Esqueceu a senha? Contate o administrador da igreja.
@@ -854,7 +1026,158 @@ def logout():
     st.session_state.current_user = None
     st.session_state.user_login = None
     st.session_state.user_role = None
+    st.session_state.force_password_change = False
     st.rerun()
+
+
+# ==========================================
+# GERENCIAMENTO DE PERMISSÕES E SENHAS
+# ==========================================
+def alterar_senha_neon(login, senha_nova):
+    """Altera a senha de um usuário no Neon"""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return False
+        
+        from sqlalchemy import text
+        login_clean = login.lower().strip()
+        nova_hash = hash_password(senha_nova)
+        with engine.begin() as conn:
+            result = conn.execute(
+                text("UPDATE usuarios SET senha_hash = :senha WHERE lower(login) = :login"),
+                {'senha': nova_hash, 'login': login_clean}
+            )
+            if result.rowcount == 0 and login_clean in ('admin', 'master'):
+                nome_default = 'Administrador' if login_clean == 'admin' else 'Master'
+                conn.execute(
+                    text(
+                        "INSERT INTO usuarios (login, nome, senha_hash, perfil, ativo) "
+                        "VALUES (:login, :nome, :senha, :perfil, TRUE)"
+                    ),
+                    {
+                        'login': login_clean,
+                        'nome': nome_default,
+                        'senha': nova_hash,
+                        'perfil': login_clean
+                    }
+                )
+        return True
+    except Exception as e:
+        logging.warning(f"Erro ao alterar senha: {e}")
+        return False
+
+
+def is_default_password(login, senha):
+    """Verifica se o login está usando a senha padrão para forçar alteração."""
+    if login in ('admin', 'master') and senha == 'pibjf':
+        return True
+    usuario = carregar_usuario_por_login(login)
+    if usuario is None:
+        return False
+    return usuario.get('senha_hash') == hash_password('pibjf')
+
+
+def carregar_permissoes_abas_neon(login):
+    """Carrega as abas permitidas para um usuário"""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return None
+        
+        query = "SELECT abas_acesso FROM usuarios WHERE login = %(login)s LIMIT 1;"
+        df = pd.read_sql_query(query, engine, params={'login': login})
+        if df.empty:
+            return None
+        
+        abas_str = df.iloc[0]['abas_acesso']
+        if abas_str is None:
+            return None
+        if isinstance(abas_str, str):
+            abas = [aba.strip() for aba in abas_str.split(',') if aba.strip()]
+            return abas if abas else None
+        return None
+    except Exception as e:
+        logging.warning(f"Erro ao carregar permissões de abas: {e}")
+        return None
+
+
+def obter_abas_permitidas(login, perfil):
+    """Retorna as abas que o usuário pode acessar, usando permissões customizadas ou o padrão do perfil."""
+    permissoes_abas = carregar_permissoes_abas_neon(login)
+    if permissoes_abas:
+        return permissoes_abas
+    abas_padrao = obter_abas_padrao_por_perfil(perfil)
+    return abas_padrao or ["Dashboard"]
+
+
+def salvar_permissoes_abas_neon(login, abas_permitidas):
+    """Salva as abas permitidas para um usuário"""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return False
+        
+        from sqlalchemy import text
+        abas_str = ','.join(abas_permitidas) if abas_permitidas else None
+        with engine.begin() as conn:
+            conn.execute(
+                text("UPDATE usuarios SET abas_acesso = %(abas)s WHERE login = %(login)s"),
+                {'abas': abas_str, 'login': login}
+            )
+        return True
+    except Exception as e:
+        logging.warning(f"Erro ao salvar permissões de abas: {e}")
+        return False
+
+
+PERFIS_DISPONIVEIS = {
+    "Master (Acesso técnico completo)": "master",
+    "Técnico (Acesso irrestrito)": "tecnico",
+    "Gestão (Tudo exceto Usuários)": "admin",
+    "Secretaria": "secretaria",
+    "Controle de Estoque": "controle_estoque",
+    "Voluntário": "voluntario"
+}
+
+
+def obter_abas_padrao_por_perfil(perfil):
+    perfil = (perfil or '').lower()
+    opcoes_base = [
+        "Dashboard",
+        "Despensa",
+        "Famílias",
+        "Agendamentos",
+        "Parceiros",
+        "Voluntários",
+        "Histórico",
+        "Modo SOS",
+        "Mapa Famílias",
+        "Relatórios"
+    ]
+
+    if perfil in ("master", "tecnico"):
+        return opcoes_base + ["Usuários"]
+    if perfil == "admin":
+        return opcoes_base
+    if perfil == "secretaria":
+        return [
+            "Dashboard",
+            "Despensa",
+            "Famílias",
+            "Agendamentos",
+            "Parceiros",
+            "Histórico",
+            "Mapa Famílias",
+            "Relatórios"
+        ]
+    if perfil == "controle_estoque":
+        return ["Dashboard", "Despensa", "Famílias", "Relatórios"]
+    if perfil == "voluntario":
+        return ["Dashboard", "Famílias", "Agendamentos", "Mapa Famílias", "Histórico"]
+
+    return opcoes_base
+
 
 # ==========================================
 # 3. INTEGRAÇÃO DE APIs (Georreferenciação)
@@ -979,16 +1302,24 @@ if 'db_lotes' not in st.session_state:
 if 'db_familias' not in st.session_state:
     st.session_state.db_familias = pd.DataFrame([
         {
-            'id_familia': 1, 'nome': 'Maria de Fátima', 'dependentes': 3, 'prioridade': 'Alta', 
-            'cep': '36010001', 'endereco': 'Av. Barão do Rio Branco, 100 - Centro, Juiz de Fora/MG', 
-            'lat': -21.7611, 'lon': -43.3444, 
+            'id_familia': 1, 'nome': 'Maria de Fátima', 'dependentes': 3, 'prioridade': 'Alta',
+            'telefone': '(32) 98888-1234', 'atendimento_tipo': 'Contínuo',
+            'cep': '36010001', 'endereco': 'Av. Barão do Rio Branco, 100 - Centro, Juiz de Fora/MG',
+            'lat': -21.7611, 'lon': -43.3444,
             'igreja': 'Igreja Batista Central', 'pastor': 'Pr. Carlos',
-            'ultima_entrega': None
+            'ultima_entrega': None,
+            'data_cadastro': datetime.date(2026, 5, 1)
         }
     ])
 
 if 'db_entregas' not in st.session_state:
     st.session_state.db_entregas = pd.DataFrame(columns=['id_entrega', 'nome_familia', 'data', 'tipo'])
+
+if 'db_agendamentos' not in st.session_state:
+    st.session_state.db_agendamentos = pd.DataFrame(columns=[
+        'id_agendamento', 'id_familia', 'nome_familia', 'data_agendada', 'hora_agendada',
+        'tipo_entrega', 'voluntario', 'observacoes', 'status', 'data_criacao'
+    ])
 
 if 'db_locais_acolhimento' not in st.session_state:
     st.session_state.db_locais_acolhimento = pd.DataFrame([
@@ -1003,6 +1334,28 @@ if 'db_voluntarios' not in st.session_state:
         'id_voluntario', 'nome', 'telefone', 'email', 'cep', 'endereco',
         'possui_veiculo', 'tipo_veiculo', 'dias_disponiveis', 'horario_inicio',
         'horario_fim', 'observacoes', 'data_cadastro', 'ativo'
+    ])
+
+if 'db_parceiros' not in st.session_state:
+    st.session_state.db_parceiros = pd.DataFrame([
+        {
+            'id_parceiro': 1,
+            'tipo_pessoa': 'Pessoa Física',
+            'nome': 'Maria Aparecida',
+            'documento': '000.000.000-00',
+            'telefone': '(32) 98888-0000',
+            'email': 'maria@igreja.org',
+            'cep': '36010001',
+            'endereco': 'Rua das Flores, 123',
+            'contato_preferencial': 'E-mail',
+            'alerta_mensal': True,
+            'alerta_anual': True,
+            'ultimo_agradecimento_mensal': None,
+            'ultimo_agradecimento_anual': None,
+            'itens_ajuda': 'Arroz, Feijão, Leite em Pó',
+            'data_cadastro': datetime.date.today(),
+            'ativo': True
+        }
     ])
 
 if 'entrega_ativa_familia' not in st.session_state:
@@ -1055,6 +1408,9 @@ def alocar_cesta_peps(id_familia):
             qtd_a_retirar = min(lote['quantidade'], qtd_pendente)
             st.session_state.db_lotes.at[idx, 'quantidade'] -= qtd_a_retirar
             qtd_pendente -= qtd_a_retirar
+
+    if not sincronizar_lotes_neon():
+        return False, "Não foi possível atualizar o estoque no banco. Tente novamente."
             
     nova_entrega = {
         'id_entrega': len(st.session_state.db_entregas)+1,
@@ -1072,18 +1428,133 @@ def alocar_cesta_peps(id_familia):
     refresh_estoque_neon(force=True)
     return True, f"Cesta entregue para {nome_familia}. Família removida da fila de espera!"
 
-def dar_baixa_avulsa_peps(id_item, qtd_desejada):
-    lotes = st.session_state.db_lotes[(st.session_state.db_lotes['id_item'] == id_item) & (st.session_state.db_lotes['quantidade'] > 0)].sort_values(by='vencimento')
+def obter_lotes_disponiveis_por_validade(id_item):
+    lotes = st.session_state.db_lotes[
+        (st.session_state.db_lotes['id_item'] == id_item) &
+        (st.session_state.db_lotes['quantidade'] > 0)
+    ].copy()
+    if lotes.empty:
+        return lotes
+    lotes['vencimento'] = pd.to_datetime(lotes['vencimento'], errors='coerce')
+    return lotes.sort_values(by=['vencimento', 'id_lote'], ascending=[True, True])
+
+
+def obter_df_estoque_para_entrega():
+    df_estoque = pd.merge(
+        st.session_state.db_lotes[st.session_state.db_lotes['quantidade'] > 0],
+        st.session_state.db_catalogo,
+        on='id_item'
+    )
+    if df_estoque.empty:
+        return pd.DataFrame(columns=['id_item', 'nome', 'qtd_por_cesta', 'qtd_total'])
+    df_estoque = df_estoque.groupby(['id_item', 'nome', 'qtd_por_cesta']).agg({'quantidade': 'sum'}).reset_index()
+    df_estoque.columns = ['id_item', 'nome', 'qtd_por_cesta', 'qtd_total']
+    return df_estoque.sort_values(by='nome', ascending=True).reset_index(drop=True)
+
+
+def dar_baixa_avulsa_peps(id_item, qtd_desejada, familia_id=None, familia_nome=None):
+    lotes = obter_lotes_disponiveis_por_validade(id_item)
     total_disponivel = lotes['quantidade'].sum()
     if total_disponivel < qtd_desejada:
         return False, f"Estoque insuficiente! Temos apenas {total_disponivel} unidades."
+
+    usuario_nome = st.session_state.get('current_user') or None
+    usuario_login = st.session_state.get('user_login') or None
     qtd_pendente = qtd_desejada
     for idx, lote in lotes.iterrows():
-        if qtd_pendente <= 0: break
+        if qtd_pendente <= 0:
+            break
         qtd_a_retirar = min(lote['quantidade'], qtd_pendente)
         st.session_state.db_lotes.at[idx, 'quantidade'] -= qtd_a_retirar
+        registrar_baixa_estoque(
+            id_item=int(id_item),
+            qtd_baixada=int(qtd_a_retirar),
+            id_lote=int(lote['id_lote']),
+            nome_item=str(lote.get('nome_item') or ''),
+            vencimento=str(lote.get('vencimento') or ''),
+            tipo_movimentacao='Entrega',
+            usuario_nome=usuario_nome,
+            usuario_login=usuario_login,
+            familia_id=familia_id,
+            familia_nome=familia_nome,
+        )
         qtd_pendente -= qtd_a_retirar
+
+    sincronizar_lotes_neon()
     return True, "Baixa registrada no estoque real."
+
+
+def criar_agendamento_entrega(dados_agendamento):
+    dados = dados_agendamento.copy()
+    dados['id_agendamento'] = len(st.session_state.db_agendamentos) + 1
+    dados['status'] = 'Agendado'
+    dados['data_criacao'] = datetime.datetime.now()
+    st.session_state.db_agendamentos = pd.concat([st.session_state.db_agendamentos, pd.DataFrame([dados])], ignore_index=True)
+    return True
+
+
+def montar_html_card_voluntario(vol):
+    """Gera o HTML do card de voluntário com valores escapados para evitar quebra do layout."""
+    nome = html.escape(str(vol.get('nome', '-')))
+    telefone = html.escape(str(vol.get('telefone', '-')))
+    email = html.escape(str(vol.get('email', '-')))
+    endereco = html.escape(str(vol.get('endereco', '-')))
+    observacoes = html.escape(str(vol.get('observacoes', '-')))
+    dias = html.escape(str(vol.get('dias_disponiveis', '-')))
+    horario_inicio = html.escape(str(vol.get('horario_inicio', '-')))
+    horario_fim = html.escape(str(vol.get('horario_fim', '-')))
+    tipo_veiculo = html.escape(str(vol.get('tipo_veiculo', '-')))
+
+    if vol.get('possui_veiculo', False):
+        tag_veiculo = f"<span class='badge badge-success'>🚗 {tipo_veiculo}</span>"
+    else:
+        tag_veiculo = "<span class='badge badge-info'>🚶 Sem veículo</span>"
+
+    contato_html = f"  |  ✉️ {email}" if email != '-' else ""
+    observacoes_html = f"<div style='font-size:12px; color:#6B7280; margin-top:4px;'>💬 {observacoes}</div>" if observacoes != '-' else ""
+
+    return f"""
+        <div class="bento-card">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px;">
+                <div>
+                    <div class="title-modern" style="font-size: 18px; margin-bottom: 2px;">{nome}</div>
+                    <div class="subtitle-modern">📞 {telefone}{contato_html}</div>
+                    <div class="subtitle-modern">📍 {endereco}</div>
+                    <div style="margin-top: 6px; font-size: 13px; color: #374151;">
+                        📅 <b>Disponível:</b> {dias} &nbsp;|&nbsp; ⏰ {horario_inicio} às {horario_fim}
+                    </div>
+                    {observacoes_html}
+                </div>
+                <div>{tag_veiculo}</div>
+            </div>
+        </div>
+    """
+
+
+def concluir_agendamento_entrega(id_agendamento):
+    linhas = st.session_state.db_agendamentos[st.session_state.db_agendamentos['id_agendamento'] == id_agendamento]
+    if linhas.empty:
+        return False
+    linha = linhas.iloc[0]
+    nova_entrega = {
+        'id_entrega': len(st.session_state.db_entregas) + 1,
+        'id_familia': linha['id_familia'],
+        'nome_familia': linha['nome_familia'],
+        'data': datetime.date.today(),
+        'tipo': f"{linha['tipo_entrega']} - {linha.get('observacoes', '') or ''}".strip()
+    }
+    st.session_state.db_entregas = pd.concat([st.session_state.db_entregas, pd.DataFrame([nova_entrega])], ignore_index=True)
+    salvar_entrega_neon(nova_entrega)
+    st.session_state.db_agendamentos.loc[st.session_state.db_agendamentos['id_agendamento'] == id_agendamento, 'status'] = 'Concluído'
+    return True
+
+
+def cancelar_agendamento_entrega(id_agendamento):
+    if id_agendamento in st.session_state.db_agendamentos['id_agendamento'].values:
+        st.session_state.db_agendamentos.loc[st.session_state.db_agendamentos['id_agendamento'] == id_agendamento, 'status'] = 'Cancelado'
+        return True
+    return False
+
 
 def renderizar_mapa_alto_contraste(df_mapa, zoom_level=12, estilo_selecionado="Escuro"):
     """
@@ -1200,6 +1671,29 @@ def gerar_html_impressao(df, titulo, subtitulo=""):
 # ==========================================
 def main_app():
     refresh_estoque_neon()
+    if st.session_state.force_password_change:
+        st.markdown("### Primeiro acesso: altere sua senha")
+        with st.form("form_forcar_alterar_senha"):
+            senha_atual = st.text_input("Senha Atual", type="password")
+            senha_nova = st.text_input("Nova Senha", type="password")
+            senha_confirmada = st.text_input("Confirmar Nova Senha", type="password")
+            if st.form_submit_button("Alterar Senha", use_container_width=True):
+                if not senha_atual or not senha_nova or not senha_confirmada:
+                    st.error("Preencha todos os campos.")
+                elif senha_nova != senha_confirmada:
+                    st.error("As novas senhas não conferem.")
+                elif len(senha_nova) < 6:
+                    st.error("A nova senha deve ter pelo menos 6 caracteres.")
+                elif not validar_usuario(st.session_state.user_login, senha_atual):
+                    st.error("Senha atual incorreta.")
+                elif alterar_senha_neon(st.session_state.user_login, senha_nova):
+                    st.success("✅ Senha alterada com sucesso. Agora você pode acessar o sistema.")
+                    st.session_state.force_password_change = False
+                    st.rerun()
+                else:
+                    st.error("Erro ao alterar senha. Tente novamente.")
+        st.stop()
+
     # --- Sidebar de Navegação ---
     with st.sidebar:
         nome_exibido = st.session_state.current_user or 'Usuário'
@@ -1208,20 +1702,47 @@ def main_app():
         st.markdown(f"<span class='badge badge-info'>{perfil_exibido.title()}</span>", unsafe_allow_html=True)
         st.markdown("---")
 
-        opcoes_base = ["Dashboard", "Despensa", "Famílias", "Voluntários", "Histórico", "Modo SOS", "Mapa Famílias", "Relatórios"]
-        if st.session_state.user_role == 'master':
-            opcoes_menu = opcoes_base + ["Usuários"]
-        elif st.session_state.user_role == 'voluntario':
-            opcoes_menu = ["Despensa", "Famílias", "Mapa Famílias"]
-        else:
-            opcoes_menu = opcoes_base
+        # OPÇÃO: Alterar Senha
+        with st.expander("🔐 Alterar Senha"):
+            with st.form("form_alterar_senha"):
+                senha_atual = st.text_input("Senha Atual", type="password", key="atual")
+                senha_nova = st.text_input("Nova Senha", type="password", key="nova")
+                senha_confirmada = st.text_input("Confirmar Nova Senha", type="password", key="confirmar")
+                
+                if st.form_submit_button("Alterar Senha", use_container_width=True):
+                    # Validar senha atual
+                    usuario_info = validar_usuario(st.session_state.user_login, senha_atual)
+                    if usuario_info:
+                        if senha_nova != senha_confirmada:
+                            st.error("As novas senhas não conferem.")
+                        elif len(senha_nova) < 6:
+                            st.error("A nova senha deve ter pelo menos 6 caracteres.")
+                        elif alterar_senha_neon(st.session_state.user_login, senha_nova):
+                            st.success("✅ Senha alterada com sucesso!")
+                        else:
+                            st.error("Erro ao alterar senha. Tente novamente.")
+                    else:
+                        st.error("Senha atual incorreta.")
+        
+        st.markdown("---")
+
+        opcoes_menu = obter_abas_permitidas(st.session_state.user_login, st.session_state.user_role)
+
+        if 'menu_opcao' not in st.session_state or st.session_state.menu_opcao not in opcoes_menu:
+            st.session_state.menu_opcao = opcoes_menu[0]
 
         menu_opcao = st.radio(
             "Navegação",
             opcoes_menu,
-            label_visibility="collapsed"
+            index=opcoes_menu.index(st.session_state.menu_opcao),
+            label_visibility="collapsed",
+            key="menu_opcao"
         )
-        
+
+        if menu_opcao not in opcoes_menu:
+            st.error("Aba não autorizada para o seu perfil.")
+            st.stop()
+
         st.markdown("---")
         st.info(f"📅 {datetime.date.today().strftime('%d/%m/%Y')}")
         if st.button("🚪 Sair do Sistema", use_container_width=True):
@@ -1315,13 +1836,36 @@ def main_app():
         st.markdown("---")
         st.markdown("<div class='title-modern'>Estoque Físico Atual</div>", unsafe_allow_html=True)
         if not st.session_state.db_lotes.empty and st.session_state.db_lotes['quantidade'].sum() > 0:
+            hoje = datetime.date.today()
             df_exibicao = pd.merge(st.session_state.db_lotes[st.session_state.db_lotes['quantidade'] > 0], st.session_state.db_catalogo, on='id_item')
-            df_exibicao = df_exibicao[['nome', 'quantidade', 'vencimento']].sort_values(by='vencimento')
-            df_exibicao['vencimento'] = pd.to_datetime(df_exibicao['vencimento']).dt.strftime('%d/%m/%Y')
-            df_exibicao.rename(columns={'nome': 'Produto', 'quantidade': 'Qtd Disponível', 'vencimento': 'Vence em'}, inplace=True)
-            st.dataframe(df_exibicao, use_container_width=True, hide_index=True)
+            df_exibicao = df_exibicao.groupby(['id_item', 'nome'], as_index=False).agg(
+                quantidade=('quantidade', 'sum'),
+                vencimento_proximo=('vencimento', 'min'),
+                vence_proximo=('vencimento', lambda s: (pd.to_datetime(s) <= pd.Timestamp(hoje + datetime.timedelta(days=30))).any())
+            )
+            df_exibicao['Vence em'] = pd.to_datetime(df_exibicao['vencimento_proximo']).dt.strftime('%d/%m/%Y')
+            df_exibicao['Alerta'] = df_exibicao['vence_proximo'].apply(lambda x: '⚠️ Vence em até 30 dias' if x else 'OK')
+            df_exibicao.rename(columns={'nome': 'Produto', 'quantidade': 'Qtd Disponível'}, inplace=True)
+            st.dataframe(df_exibicao[['Produto', 'Qtd Disponível', 'Vence em', 'Alerta']], use_container_width=True, hide_index=True)
         else:
             st.info("A despensa está vazia.")
+
+        st.markdown("---")
+        st.markdown("<div class='title-modern'>Histórico de Baixas</div>", unsafe_allow_html=True)
+        df_baixas = carregar_baixas_estoque_neon()
+        if not df_baixas.empty:
+            df_baixas = df_baixas.copy()
+            df_baixas['data_baixa'] = pd.to_datetime(df_baixas['data_baixa'], errors='coerce').dt.strftime('%d/%m/%Y %H:%M')
+            df_baixas = df_baixas.rename(columns={
+                'nome_item': 'Item',
+                'quantidade': 'Quantidade',
+                'familia_nome': 'Família',
+                'usuario_login': 'Usuário',
+                'data_baixa': 'Data/Hora',
+            })
+            st.dataframe(df_baixas[['Item', 'Quantidade', 'Família', 'Usuário', 'Data/Hora']], use_container_width=True, hide_index=True)
+        else:
+            st.info("Nenhuma baixa registrada até o momento.")
 
     elif menu_opcao == "Famílias":
         c1, c2 = st.columns([3, 1])
@@ -1339,11 +1883,15 @@ def main_app():
                 dep = col_dep.number_input("Número de Dependentes", min_value=0)
                 prio = col_prio.selectbox("Prioridade", ["Normal", "Alta (Urgência)"])
                 
-                st.markdown("##### Endereço e Localização")
-                col_cep, col_num = st.columns([1, 2])
+                st.markdown("##### Contato e Endereço")
+                col_tel, col_cep = st.columns([1, 1])
+                telefone = col_tel.text_input("Telefone de Contato *", placeholder="(32) 99999-0000")
                 cep = col_cep.text_input("CEP (Somente números) *", max_chars=8)
-                numero = col_num.text_input("Número e Complemento *")
-                
+                numero = st.text_input("Número e Complemento *")
+
+                st.markdown("##### Tipo de Atendimento")
+                tipo_atendimento = st.selectbox("Atendimento", ["Contínuo", "Esporádico"])
+
                 # --- NOVOS CAMPOS PARA CORREÇÃO DO MAPA ---
                 st.markdown("##### 📍 Coordenadas (Opcional - Use se o mapa automático falhar)")
                 st.caption("Dica: No Google Maps, clique com o botão direito no local e copie os números (Ex: -23.55, -46.63)")
@@ -1357,7 +1905,7 @@ def main_app():
                 pastor = col_pastor.text_input("Nome do Pastor")
                 
                 if st.form_submit_button("Cadastrar Família", type="primary"):
-                    if nome and cep and numero:
+                    if nome and cep and numero and telefone:
                         lat, lon = None, None
                         endereco_display = "Endereço em processamento"
 
@@ -1386,12 +1934,20 @@ def main_app():
                         
                         # 3. Salva no Banco de Dados
                         nova_fam = {
-                            'id_familia': len(st.session_state.db_familias)+1, 
-                            'nome': nome, 'dependentes': dep, 'prioridade': prio.split(" ")[0],
-                            'cep': cep, 'endereco': endereco_display,
-                            'lat': lat, 'lon': lon, # Pode ser None se falhar
-                            'igreja': igreja if igreja else 'Não informado', 'pastor': pastor if pastor else '-',
-                            'ultima_entrega': None
+                            'id_familia': len(st.session_state.db_familias)+1,
+                            'nome': nome,
+                            'dependentes': dep,
+                            'prioridade': prio.split(" ")[0],
+                            'telefone': telefone,
+                            'atendimento_tipo': tipo_atendimento,
+                            'cep': cep,
+                            'endereco': endereco_display,
+                            'lat': lat,
+                            'lon': lon, # Pode ser None se falhar
+                            'igreja': igreja if igreja else 'Não informado',
+                            'pastor': pastor if pastor else '-',
+                            'ultima_entrega': None,
+                            'data_cadastro': datetime.date.today()
                         }
                         st.session_state.db_familias = pd.concat([st.session_state.db_familias, pd.DataFrame([nova_fam])], ignore_index=True)
                         
@@ -1416,6 +1972,22 @@ def main_app():
                 # Verifica se está no mapa
                 status_mapa = "📍 No Mapa" if pd.notnull(fam['lat']) else "⚠️ <b>Sem Mapa</b> (Exclua e cadastre com Lat/Lon)"
                 
+                data_cadastro_text = ''
+                if pd.notnull(fam.get('data_cadastro')):
+                    data_cadastro_text = pd.to_datetime(fam['data_cadastro']).strftime('%d/%m/%Y')
+                entregas_fam = st.session_state.db_entregas[st.session_state.db_entregas['id_familia'] == fam['id_familia']]
+                historico_texto = ''
+                itens_ultima_texto = ''
+                if not entregas_fam.empty:
+                    ultima = entregas_fam.sort_values(by='data', ascending=False).iloc[0]
+                    data_ult = pd.to_datetime(ultima['data']).strftime('%d/%m/%Y')
+                    historico_texto = f"Última entrega: {data_ult} — {ultima['tipo']}"
+                    if ultima['tipo'] == 'Cesta Padrão':
+                        itens_cesta = st.session_state.db_catalogo[st.session_state.db_catalogo['qtd_por_cesta'] > 0][['nome', 'qtd_por_cesta']]
+                        itens_ultima_texto = 'Itens: ' + ', '.join([f"{row['qtd_por_cesta']}x {row['nome']}" for _, row in itens_cesta.iterrows()])
+                    else:
+                        itens_ultima_texto = 'Itens: ' + str(ultima['tipo']).replace('Avulso: ', '')
+
                 st.markdown(f"""
                     <div class="bento-card">
                         <div style="display: flex; justify-content: space-between; align-items: flex-start;">
@@ -1424,7 +1996,13 @@ def main_app():
                                 <div class="subtitle-modern">
                                     👥 {fam['dependentes']} Dep. | {fam['endereco']}
                                 </div>
+                                <div class="subtitle-modern" style="margin-top: 8px; font-size: 13px; color: #cbd5e1;">
+                                    ☎️ {fam.get('telefone','-')} | Atendimento: {fam.get('atendimento_tipo','-')}
+                                </div>
                                 <div style="font-size: 12px; margin-top: 5px; color: #94a3b8;">{status_mapa}</div>
+                                <div style="font-size: 12px; color: #94a3b8;">{('Cadastro: ' + data_cadastro_text) if data_cadastro_text else ''}</div>
+                                {f'<div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">{historico_texto}</div>' if historico_texto else ''}
+                                {f'<div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">{itens_ultima_texto}</div>' if itens_ultima_texto else ''}
                             </div>
                             {tag_prio}
                         </div>
@@ -1447,17 +2025,22 @@ def main_app():
                         st.markdown(f"""
                             <div style="background: #111827; border: 2px solid var(--primary); border-radius: 12px; padding: 20px; margin: 8px 0;">
                                 <h4 style="color: #bfdbfe; margin: 0 0 4px 0;">📦 Painel de Entrega — {fam['nome']}</h4>
-                                <p style="color: #93c5fd; font-size: 13px; margin: 0;">Escolha o tipo de entrega abaixo</p>
+                                <p style="color: #93c5fd; font-size: 13px; margin: 0;">Escolha o tipo de entrega abaixo e, se necessário, adicione itens esquecidos.</p>
                             </div>
                         """, unsafe_allow_html=True)
 
+                        entregas_fam = st.session_state.db_entregas[st.session_state.db_entregas['id_familia'] == fam['id_familia']]
+                        if not entregas_fam.empty:
+                            st.markdown("**Itens já cadastrados / histórico recente:**")
+                            entregas_recentes = entregas_fam.sort_values(by='data', ascending=False).head(3)
+                            for _, ent in entregas_recentes.iterrows():
+                                data_ent = pd.to_datetime(ent['data']).strftime('%d/%m/%Y')
+                                st.markdown(f"- {data_ent}: {ent['tipo']}")
+
+                        st.markdown("**Se esqueceu algum item? Use a aba de Itens Avulsos para registrar extras.**")
+
                         # --- Calcula estoque disponível ---
-                        df_estoque = pd.merge(
-                            st.session_state.db_lotes[st.session_state.db_lotes['quantidade'] > 0],
-                            st.session_state.db_catalogo,
-                            on='id_item'
-                        ).groupby(['id_item', 'nome', 'qtd_por_cesta']).agg({'quantidade': 'sum'}).reset_index()
-                        df_estoque.columns = ['id_item', 'nome', 'qtd_por_cesta', 'qtd_total']
+                        df_estoque = obter_df_estoque_para_entrega()
 
                         cestas_disp = calcular_cestas_possiveis()
 
@@ -1529,7 +2112,12 @@ def main_app():
                                             erros = []
                                             itens_entregues = []
                                             for id_it, dados_it in selecoes_avulsas.items():
-                                                suc, msg = dar_baixa_avulsa_peps(id_it, dados_it['qtd'])
+                                                suc, msg = dar_baixa_avulsa_peps(
+                                                    id_it,
+                                                    dados_it['qtd'],
+                                                    familia_id=fam['id_familia'],
+                                                    familia_nome=fam['nome'],
+                                                )
                                                 if suc:
                                                     itens_entregues.append(f"{dados_it['qtd']}x {dados_it['nome']}")
                                                 else:
@@ -1562,6 +2150,155 @@ def main_app():
         else:
             st.info("Nenhuma família cadastrada.")
 
+    elif menu_opcao == "Agendamentos":
+        st.markdown("<div class='title-modern'>Agendamentos de Entrega</div>", unsafe_allow_html=True)
+        st.markdown("<p class='subtitle-modern'>Agende a retirada ou entrega de itens e acompanhe o status de cada pedido.</p>", unsafe_allow_html=True)
+
+        with st.expander("➕ Novo Agendamento", expanded=True):
+            with st.form("form_agendamento", clear_on_submit=True):
+                familia_selecionada = st.selectbox(
+                    "Família",
+                    options=st.session_state.db_familias['id_familia'].tolist() if not st.session_state.db_familias.empty else [],
+                    format_func=lambda x: f"{st.session_state.db_familias[st.session_state.db_familias['id_familia'] == x]['nome'].iloc[0]}"
+                    if not st.session_state.db_familias[st.session_state.db_familias['id_familia'] == x].empty else str(x)
+                )
+                data_agendada = st.date_input("Data da Entrega", value=datetime.date.today())
+                hora_agendada = st.time_input("Horário da Entrega", value=datetime.time(9, 0))
+                tipo_entrega = st.radio("Tipo de Entrega", ["Presencial na Igreja", "Residência"], horizontal=True)
+                voluntario = st.text_input("Responsável/Voluntário (opcional)")
+                observacoes = st.text_area("Observações", help="Use este campo para itens combinados ou observações especiais.")
+
+                if st.form_submit_button("Agendar Entrega", type="primary", use_container_width=True):
+                    if familia_selecionada and data_agendada:
+                        familia = st.session_state.db_familias[st.session_state.db_familias['id_familia'] == familia_selecionada].iloc[0]
+                        criar_agendamento_entrega({
+                            'id_familia': familia_selecionada,
+                            'nome_familia': familia['nome'],
+                            'data_agendada': data_agendada,
+                            'hora_agendada': hora_agendada.strftime('%H:%M'),
+                            'tipo_entrega': tipo_entrega,
+                            'voluntario': voluntario or '-',
+                            'observacoes': observacoes or ''
+                        })
+                        st.success(f"✅ Entrega agendada para {familia['nome']} em {data_agendada.strftime('%d/%m/%Y')}.")
+                        st.rerun()
+                    else:
+                        st.error("Selecione a família e a data da entrega.")
+
+        st.markdown("---")
+        if st.session_state.db_agendamentos.empty:
+            st.info("Não há agendamentos registrados.")
+        else:
+            agendamentos_exibicao = st.session_state.db_agendamentos.copy()
+            agendamentos_exibicao['data_agendada'] = pd.to_datetime(agendamentos_exibicao['data_agendada']).dt.strftime('%d/%m/%Y')
+            agendamentos_exibicao['data_criacao'] = pd.to_datetime(agendamentos_exibicao['data_criacao']).dt.strftime('%d/%m/%Y %H:%M')
+            st.dataframe(
+                agendamentos_exibicao[['id_agendamento', 'nome_familia', 'data_agendada', 'hora_agendada', 'tipo_entrega', 'voluntario', 'status']],
+                use_container_width=True,
+                hide_index=True
+            )
+
+            for _, ag in st.session_state.db_agendamentos.sort_values(by=['data_agendada', 'hora_agendada']).iterrows():
+                if ag['status'] == 'Agendado':
+                    col1, col2 = st.columns([2, 1])
+                    with col1:
+                        st.markdown(f"**#{int(ag['id_agendamento'])} — {ag['nome_familia']}** — {ag['data_agendada']} às {ag['hora_agendada']} ({ag['tipo_entrega']})")
+                        st.markdown(f"<small>{ag['observacoes'] or 'Sem observações'} | Voluntário: {ag['voluntario']}</small>", unsafe_allow_html=True)
+                    with col2:
+                        if st.button(f"Concluir", key=f"concluir_ag_{ag['id_agendamento']}", use_container_width=True):
+                            concluir_agendamento_entrega(ag['id_agendamento'])
+                            st.success("Agendamento concluído e registrado como entrega.")
+                            st.rerun()
+                        if st.button(f"Cancelar", key=f"cancelar_ag_{ag['id_agendamento']}", use_container_width=True):
+                            cancelar_agendamento_entrega(ag['id_agendamento'])
+                            st.warning("Agendamento cancelado.")
+                            st.rerun()
+
+    elif menu_opcao == "Parceiros":
+        st.markdown("<div class='title-modern'>Cadastro de Parceiros</div>", unsafe_allow_html=True)
+        st.markdown("<p class='subtitle-modern'>Registre parceiros que ajudam a despensa e receba alertas de agradecimento.</p>", unsafe_allow_html=True)
+
+        with st.expander("➕ Cadastrar Novo Parceiro", expanded=True):
+            with st.form("form_parceiro", clear_on_submit=True):
+                st.markdown("##### Dados do Parceiro")
+                tipo_pessoa = st.radio("Tipo de Pessoa", ["Pessoa Física", "Pessoa Jurídica"], horizontal=True)
+                nome_par = st.text_input("Nome / Razão Social *")
+                documento = st.text_input("CPF / CNPJ")
+                telefone_par = st.text_input("Telefone *", placeholder="(32) 99999-0000")
+                email_par = st.text_input("E-mail")
+
+                st.markdown("##### Endereço")
+                cep_par = st.text_input("CEP", max_chars=8)
+                endereco_par = st.text_area("Endereço completo")
+
+                st.markdown("##### Preferências de Agradecimento")
+                contato_preferencial = st.selectbox("Enviar agradecimento por", ["E-mail", "Correios", "Ambos"])
+                alerta_mensal = st.checkbox("Alerta mensal", value=True)
+                alerta_anual = st.checkbox("Alerta anual", value=False)
+                itens_ajuda = st.text_area("Itens que costumam ajudar na despensa", help="Ex: arroz, feijão, óleo, leite em pó")
+
+                if st.form_submit_button("Cadastrar Parceiro", type="primary"):
+                    if nome_par and telefone_par:
+                        novo_parceiro = {
+                            'id_parceiro': len(st.session_state.db_parceiros) + 1,
+                            'tipo_pessoa': tipo_pessoa,
+                            'nome': nome_par,
+                            'documento': documento,
+                            'telefone': telefone_par,
+                            'email': email_par,
+                            'cep': cep_par,
+                            'endereco': endereco_par,
+                            'contato_preferencial': contato_preferencial,
+                            'alerta_mensal': alerta_mensal,
+                            'alerta_anual': alerta_anual,
+                            'ultimo_agradecimento_mensal': None,
+                            'ultimo_agradecimento_anual': None,
+                            'itens_ajuda': itens_ajuda,
+                            'data_cadastro': datetime.date.today(),
+                            'ativo': True
+                        }
+                        st.session_state.db_parceiros = pd.concat([st.session_state.db_parceiros, pd.DataFrame([novo_parceiro])], ignore_index=True)
+                        salvar_parceiro_neon(novo_parceiro)
+                        st.success("✅ Parceiro cadastrado com sucesso.")
+                        st.rerun()
+                    else:
+                        st.error("Preencha os campos obrigatórios.")
+
+        if st.session_state.db_parceiros.empty:
+            st.info("Nenhum parceiro registrado ainda.")
+        else:
+            hoje = datetime.date.today()
+            for _, par in st.session_state.db_parceiros.iterrows():
+                mensal_due = par['alerta_mensal'] and (pd.isna(par['ultimo_agradecimento_mensal']) or pd.to_datetime(par['ultimo_agradecimento_mensal']).date() <= hoje - datetime.timedelta(days=30))
+                anual_due = par['alerta_anual'] and (pd.isna(par['ultimo_agradecimento_anual']) or pd.to_datetime(par['ultimo_agradecimento_anual']).date() <= hoje - datetime.timedelta(days=365))
+                status_lista = []
+                if mensal_due:
+                    status_lista.append("Agradecimento mensal pendente")
+                if anual_due:
+                    status_lista.append("Agradecimento anual pendente")
+                if not status_lista:
+                    status_lista.append("Nenhum alerta pendente")
+
+                data_cadastro_text = pd.to_datetime(par['data_cadastro']).strftime('%d/%m/%Y') if pd.notnull(par.get('data_cadastro')) else 'Não informado'
+                st.markdown(f"""
+                    <div class='bento-card'>
+                        <div style='display: flex; justify-content: space-between; align-items: flex-start;'>
+                            <div>
+                                <div class='title-modern' style='font-size: 18px;'>{par['nome']}</div>
+                                <div class='subtitle-modern'>
+                                    {par['tipo_pessoa']} | {par.get('contato_preferencial', '-')}
+                                </div>
+                                <div style='font-size: 13px; margin-top: 8px; color: #cbd5e1;'>
+                                    ☎️ {par.get('telefone', '-')} | ✉️ {par.get('email', '-')}
+                                </div>
+                                <div style='font-size: 12px; color: #94a3b8; margin-top: 4px;'>Cadastro: {data_cadastro_text}</div>
+                                <div style='font-size: 13px; margin-top: 8px; color: #e2e8f0;'>Itens: {par.get('itens_ajuda', '-')}</div>
+                                <div style='font-size: 12px; margin-top: 8px; color: #facc15;'>{' • '.join(status_lista)}</div>
+                            </div>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+
     elif menu_opcao == "Usuários":
         st.markdown("<div class='title-modern'>Gerenciamento de Usuários</div>", unsafe_allow_html=True)
         st.markdown("<p class='subtitle-modern'>Cadastre e gerencie perfis de acesso para o sistema.</p>", unsafe_allow_html=True)
@@ -1571,16 +2308,17 @@ def main_app():
                 nome_novo = st.text_input("Nome Completo")
                 login_novo = st.text_input("Login / Usuário")
                 senha_nova = st.text_input("Senha", type="password")
-                perfil_novo = st.selectbox("Perfil", ["master", "admin", "voluntario"])
+                perfil_novo = st.selectbox("Perfil", list(PERFIS_DISPONIVEIS.keys()))
                 ativo_novo = st.checkbox("Ativo", value=True)
 
                 if st.form_submit_button("Cadastrar Usuário", type="primary", use_container_width=True):
                     if nome_novo and login_novo and senha_nova:
+                        perfil_interno = PERFIS_DISPONIVEIS.get(perfil_novo, perfil_novo)
                         novo_usuario = {
                             'login': login_novo.lower().strip(),
                             'nome': nome_novo.strip(),
                             'senha': senha_nova,
-                            'perfil': perfil_novo,
+                            'perfil': perfil_interno,
                             'ativo': ativo_novo
                         }
                         if salvar_usuario_neon(novo_usuario):
@@ -1613,6 +2351,49 @@ def main_app():
                             st.rerun()
         else:
             st.warning("Nenhum usuário cadastrado no sistema.")
+
+        # --- GERENCIAR PERMISSÕES DE ABAS ---
+        st.markdown("---")
+        st.markdown("### 🔓 Controle de Acesso às Abas")
+        st.markdown("<p class='subtitle-modern'>Customize quais abas cada usuário pode acessar (deixe em branco para usar as permissões padrão do perfil).</p>", unsafe_allow_html=True)
+        
+        df_usuarios = carregar_usuarios_neon()
+        if df_usuarios is not None and not df_usuarios.empty:
+            usuario_sel = st.selectbox(
+                "Selecione um usuário para customizar acesso:",
+                options=df_usuarios['login'].tolist(),
+                format_func=lambda x: f"{x} — {df_usuarios[df_usuarios['login'] == x]['nome'].iloc[0]}"
+            )
+            
+            if usuario_sel:
+                abas_disponiveis = ["Dashboard", "Despensa", "Famílias", "Agendamentos", "Parceiros", "Voluntários", "Histórico", "Modo SOS", "Mapa Famílias", "Relatórios", "Usuários"]
+                permissoes_atuais = carregar_permissoes_abas_neon(usuario_sel)
+                
+                st.markdown(f"#### Customizando: {usuario_sel}")
+                
+                # Checkbox para cada aba
+                abas_selecionadas = st.multiselect(
+                    "Selecione as abas permitidas:",
+                    options=abas_disponiveis,
+                    default=permissoes_atuais or [],
+                    help="Deixe vazio para usar as permissões padrão baseadas no perfil do usuário"
+                )
+                
+                col_save, col_clear = st.columns(2)
+                
+                with col_save:
+                    if st.button("💾 Salvar Permissões", use_container_width=True, type="primary"):
+                        if salvar_permissoes_abas_neon(usuario_sel, abas_selecionadas if abas_selecionadas else None):
+                            st.success(f"✅ Permissões de {usuario_sel} atualizadas com sucesso!")
+                        else:
+                            st.error("Erro ao salvar permissões.")
+                
+                with col_clear:
+                    if st.button("🔄 Usar Permissões Padrão", use_container_width=True):
+                        if salvar_permissoes_abas_neon(usuario_sel, None):
+                            st.success(f"✅ {usuario_sel} voltará a usar as permissões padrão do perfil.")
+                        else:
+                            st.error("Erro ao limpar permissões.")
 
     elif menu_opcao == "Voluntários":
         st.markdown("<div class='title-modern'>Gestão de Voluntários</div>", unsafe_allow_html=True)
@@ -1708,27 +2489,25 @@ def main_app():
             st.markdown(f"<p class='subtitle-modern'>{len(df_vol_exib)} voluntário(s) encontrado(s)</p>", unsafe_allow_html=True)
 
             for _, vol in df_vol_exib.iterrows():
-                tag_veiculo = (
-                    f"<span class='badge badge-success'>🚗 {vol['tipo_veiculo']}</span>"
-                    if vol['possui_veiculo']
-                    else "<span class='badge badge-info'>🚶 Sem veículo</span>"
-                )
-                st.markdown(f"""
-                    <div class="bento-card">
-                        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px;">
-                            <div>
-                                <div class="title-modern" style="font-size: 18px; margin-bottom: 2px;">{vol['nome']}</div>
-                                <div class="subtitle-modern">📞 {vol['telefone']}{"  |  ✉️ " + vol['email'] if vol['email'] != '-' else ""}</div>
-                                <div class="subtitle-modern">📍 {vol['endereco']}</div>
-                                <div style="margin-top: 6px; font-size: 13px; color: #374151;">
-                                    📅 <b>Disponível:</b> {vol['dias_disponiveis']} &nbsp;|&nbsp; ⏰ {vol['horario_inicio']} às {vol['horario_fim']}
-                                </div>
-                                {"<div style='font-size:12px; color:#6B7280; margin-top:4px;'>💬 " + vol['observacoes'] + "</div>" if vol['observacoes'] != '-' else ""}
-                            </div>
-                            <div>{tag_veiculo}</div>
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
+                with st.container():
+                    col_main, col_badge = st.columns([4, 1.2])
+                    with col_main:
+                        st.markdown(f"### {vol['nome']}")
+                        st.write(
+                            f"📞 {vol['telefone']}"
+                            + (f"  |  ✉️ {vol['email']}" if str(vol.get('email', '-')) != '-' else "")
+                        )
+                        st.write(f"📍 {vol['endereco']}")
+                        st.caption(f"📅 Disponível: {vol['dias_disponiveis']}  |  ⏰ {vol['horario_inicio']} às {vol['horario_fim']}")
+                        if str(vol.get('observacoes', '-')) != '-':
+                            st.write(f"💬 {vol['observacoes']}")
+                    with col_badge:
+                        if bool(vol.get('possui_veiculo', False)):
+                            st.success(f"🚗 {vol['tipo_veiculo']}")
+                        else:
+                            st.info("🚶 Sem veículo")
+
+                    st.markdown("---")
 
                 if st.button(f"🗑️ Remover {vol['nome']}", key=f"del_vol_{vol['id_voluntario']}", use_container_width=False):
                     st.session_state.db_voluntarios.loc[
@@ -1965,7 +2744,8 @@ def main_app():
 # ==========================================
 # 7. EXECUÇÃO
 # ==========================================
-if not st.session_state.authenticated:
-    login_page()
-else:
-    main_app()
+if __name__ == "__main__":
+    if not st.session_state.authenticated:
+        login_page()
+    else:
+        main_app()
