@@ -290,12 +290,42 @@ def sincronizar_lotes_neon():
         return False
 
 
+def garantir_tabela_baixas_estoque(engine):
+    """Cria a tabela de baixas de estoque caso ela ainda não exista."""
+    try:
+        with engine.connect() as conn:
+            from sqlalchemy import text
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS baixas_estoque (
+                    id_baixa SERIAL PRIMARY KEY,
+                    id_item INTEGER,
+                    id_lote INTEGER,
+                    nome_item VARCHAR(255),
+                    quantidade INTEGER,
+                    vencimento DATE,
+                    tipo_movimentacao VARCHAR(100),
+                    usuario_nome VARCHAR(255),
+                    usuario_login VARCHAR(100),
+                    familia_id INTEGER,
+                    familia_nome VARCHAR(255),
+                    data_baixa TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """))
+            conn.commit()
+        return True
+    except Exception as e:
+        logging.warning(f"Não foi possível garantir a tabela baixas_estoque: {e}")
+        return False
+
+
 def registrar_baixa_estoque(id_item, qtd_baixada, id_lote, nome_item, vencimento, tipo_movimentacao="Entrega", usuario_nome=None, usuario_login=None, familia_id=None, familia_nome=None):
     """Registra uma baixa de estoque na tabela de movimentações."""
     try:
         engine = get_engine()
         if engine is None:
             return False
+
+        garantir_tabela_baixas_estoque(engine)
 
         dados_baixa = {
             'id_item': id_item,

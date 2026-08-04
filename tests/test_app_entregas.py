@@ -160,3 +160,31 @@ def test_registrar_baixa_estoque_persiste_em_tabela_especifica(monkeypatch):
 
     assert ok is True
     assert calls[0][0] == "baixas_estoque"
+
+
+def test_registrar_baixa_estoque_garante_tabela_antes_de_salvar(monkeypatch):
+    module = load_app_module(monkeypatch)
+    calls = []
+
+    def fake_garantir(engine):
+        calls.append("garantida")
+
+    class FakeDataFrame(pd.DataFrame):
+        def to_sql(self, name, con, if_exists='fail', index=False, **kwargs):
+            calls.append((name, if_exists))
+
+    monkeypatch.setattr(module, "garantir_tabela_baixas_estoque", fake_garantir)
+    monkeypatch.setattr(module.pd, "DataFrame", FakeDataFrame)
+    monkeypatch.setattr(module, "get_engine", lambda: object())
+
+    ok = module.registrar_baixa_estoque(
+        id_item=7,
+        qtd_baixada=2,
+        id_lote=1,
+        nome_item="Açúcar",
+        vencimento="2026-09-01",
+        tipo_movimentacao="Entrega"
+    )
+
+    assert ok is True
+    assert calls[0] == "garantida"
