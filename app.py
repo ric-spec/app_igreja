@@ -1998,24 +1998,24 @@ def main_app():
                     else:
                         itens_ultima_texto = 'Itens: ' + str(ultima['tipo']).replace('Avulso: ', '')
 
-                st.markdown(f"""
-                    <div class="bento-card" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
-                        <div style="flex: 1;">
-                            <div class="title-modern" style="font-size: 18px;">{fam['nome']}</div>
-                            <div class="subtitle-modern">
-                                👥 {fam['dependentes']} Dep. | {fam['endereco']}
-                            </div>
-                            <div class="subtitle-modern" style="margin-top: 8px; font-size: 13px; color: #cbd5e1;">
-                                ☎️ {fam.get('telefone','-')} | Atendimento: {fam.get('atendimento_tipo','-')}
-                            </div>
-                            <div style="font-size: 12px; margin-top: 5px; color: #94a3b8;">{status_mapa}</div>
-                            <div style="font-size: 12px; color: #94a3b8;">{('Cadastro: ' + data_cadastro_text) if data_cadastro_text else ''}</div>
-                            {f'<div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">{historico_texto}</div>' if historico_texto else ''}
-                            {f'<div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">{itens_ultima_texto}</div>' if itens_ultima_texto else ''}
-                        </div>
-                        <div>{tag_prio}</div>
-                    </div>
-                """, unsafe_allow_html=True)
+                with st.container():
+                    col_info, col_badge = st.columns([4, 1])
+                    with col_info:
+                        st.markdown(f"### {fam['nome']}")
+                        st.caption(f"👥 {fam['dependentes']} Dep. | {fam['endereco']}")
+                        st.caption(f"☎️ {fam.get('telefone', '-')} | Atendimento: {fam.get('atendimento_tipo', '-')}")
+                        st.caption(status_mapa)
+                        if data_cadastro_text:
+                            st.caption(f"Cadastro: {data_cadastro_text}")
+                        if historico_texto:
+                            st.caption(historico_texto)
+                        if itens_ultima_texto:
+                            st.caption(itens_ultima_texto)
+                    with col_badge:
+                        if prioridade == 'alta':
+                            st.markdown("**🔴 Prioridade Alta**")
+                        else:
+                            st.markdown("**ℹ️ Normal**")
                 
                 c_btn1, c_btn2 = st.columns(2)
                 with c_btn1:
