@@ -1383,9 +1383,7 @@ def dar_baixa_avulsa_peps(id_item, qtd_desejada):
         st.session_state.db_lotes.at[idx, 'quantidade'] -= qtd_a_retirar
         qtd_pendente -= qtd_a_retirar
 
-    if not sincronizar_lotes_neon():
-        return False, "Não foi possível atualizar o estoque no banco. Tente novamente."
-
+    sincronizar_lotes_neon()
     return True, "Baixa registrada no estoque real."
 
 

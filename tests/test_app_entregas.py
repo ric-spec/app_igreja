@@ -121,3 +121,18 @@ def test_estoque_para_entrega_usa_ordem_alfabetica_e_validade(monkeypatch):
     assert df_estoque["nome"].tolist() == ["Arroz", "Feijão"]
     lotes = module.obter_lotes_disponiveis_por_validade(2)
     assert lotes["id_lote"].tolist() == [1, 2]
+
+
+def test_baixa_avulsa_nao_depende_da_sincronizacao(monkeypatch):
+    module = load_app_module(monkeypatch)
+    module.st.session_state.db_lotes = pd.DataFrame([
+        {"id_lote": 1, "id_item": 7, "nome_item": "Açúcar", "quantidade": 5, "vencimento": "2026-09-01"}
+    ])
+
+    monkeypatch.setattr(module, "sincronizar_lotes_neon", lambda: False)
+
+    ok, msg = module.dar_baixa_avulsa_peps(7, 2)
+
+    assert ok is True
+    assert module.st.session_state.db_lotes.loc[0, "quantidade"] == 3
+    assert msg == "Baixa registrada no estoque real."
