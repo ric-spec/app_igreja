@@ -290,7 +290,7 @@ def sincronizar_lotes_neon():
         return False
 
 
-def registrar_baixa_estoque(id_item, qtd_baixada, id_lote, nome_item, vencimento, tipo_movimentacao="Entrega"):
+def registrar_baixa_estoque(id_item, qtd_baixada, id_lote, nome_item, vencimento, tipo_movimentacao="Entrega", usuario_nome=None, usuario_login=None, familia_id=None, familia_nome=None):
     """Registra uma baixa de estoque na tabela de movimentações."""
     try:
         engine = get_engine()
@@ -304,6 +304,10 @@ def registrar_baixa_estoque(id_item, qtd_baixada, id_lote, nome_item, vencimento
             'quantidade': int(qtd_baixada),
             'vencimento': vencimento,
             'tipo_movimentacao': tipo_movimentacao,
+            'usuario_nome': usuario_nome,
+            'usuario_login': usuario_login,
+            'familia_id': familia_id,
+            'familia_nome': familia_nome,
             'data_baixa': datetime.datetime.now(),
         }
         df = pd.DataFrame([dados_baixa])
@@ -494,7 +498,7 @@ def inicializar_neon():
             "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS abas_acesso TEXT;",
             "CREATE TABLE IF NOT EXISTS catalogo (id_item SERIAL PRIMARY KEY, nome VARCHAR(255) NOT NULL, qtd_por_cesta INTEGER DEFAULT 1, categoria VARCHAR(100), ativo BOOLEAN DEFAULT TRUE, data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
             "CREATE TABLE IF NOT EXISTS lotes (id_lote SERIAL PRIMARY KEY, id_item INTEGER, nome_item VARCHAR(255), quantidade INTEGER, vencimento DATE, local_armazenagem VARCHAR(255), data_entrada TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ativo BOOLEAN DEFAULT TRUE, FOREIGN KEY (id_item) REFERENCES catalogo(id_item));",
-            "CREATE TABLE IF NOT EXISTS baixas_estoque (id_baixa SERIAL PRIMARY KEY, id_item INTEGER, id_lote INTEGER, nome_item VARCHAR(255), quantidade INTEGER, vencimento DATE, tipo_movimentacao VARCHAR(100), data_baixa TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
+            "CREATE TABLE IF NOT EXISTS baixas_estoque (id_baixa SERIAL PRIMARY KEY, id_item INTEGER, id_lote INTEGER, nome_item VARCHAR(255), quantidade INTEGER, vencimento DATE, tipo_movimentacao VARCHAR(100), usuario_nome VARCHAR(255), usuario_login VARCHAR(100), familia_id INTEGER, familia_nome VARCHAR(255), data_baixa TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
             "CREATE TABLE IF NOT EXISTS parceiros (id_parceiro SERIAL PRIMARY KEY, tipo_pessoa VARCHAR(50), nome VARCHAR(255) NOT NULL, documento VARCHAR(50), telefone VARCHAR(20), email VARCHAR(255), cep VARCHAR(10), endereco TEXT, contato_preferencial VARCHAR(20), alerta_mensal BOOLEAN DEFAULT FALSE, alerta_anual BOOLEAN DEFAULT FALSE, ultimo_agradecimento_mensal TIMESTAMP, ultimo_agradecimento_anual TIMESTAMP, itens_ajuda TEXT, data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ativo BOOLEAN DEFAULT TRUE);",
             "CREATE INDEX IF NOT EXISTS idx_familias_nome ON familias(nome);",
             "CREATE INDEX IF NOT EXISTS idx_parceiros_nome ON parceiros(nome);",
@@ -1395,12 +1399,14 @@ def obter_df_estoque_para_entrega():
     return df_estoque.sort_values(by='nome', ascending=True).reset_index(drop=True)
 
 
-def dar_baixa_avulsa_peps(id_item, qtd_desejada):
+def dar_baixa_avulsa_peps(id_item, qtd_desejada, familia_id=None, familia_nome=None):
     lotes = obter_lotes_disponiveis_por_validade(id_item)
     total_disponivel = lotes['quantidade'].sum()
     if total_disponivel < qtd_desejada:
         return False, f"Estoque insuficiente! Temos apenas {total_disponivel} unidades."
 
+    usuario_nome = st.session_state.get('current_user') or None
+    usuario_login = st.session_state.get('user_login') or None
     qtd_pendente = qtd_desejada
     for idx, lote in lotes.iterrows():
         if qtd_pendente <= 0:
@@ -1413,7 +1419,11 @@ def dar_baixa_avulsa_peps(id_item, qtd_desejada):
             id_lote=int(lote['id_lote']),
             nome_item=str(lote.get('nome_item') or ''),
             vencimento=str(lote.get('vencimento') or ''),
-            tipo_movimentacao='Entrega'
+            tipo_movimentacao='Entrega',
+            usuario_nome=usuario_nome,
+            usuario_login=usuario_login,
+            familia_id=familia_id,
+            familia_nome=familia_nome,
         )
         qtd_pendente -= qtd_a_retirar
 
@@ -2032,7 +2042,12 @@ def main_app():
                                             erros = []
                                             itens_entregues = []
                                             for id_it, dados_it in selecoes_avulsas.items():
-                                                suc, msg = dar_baixa_avulsa_peps(id_it, dados_it['qtd'])
+                                                suc, msg = dar_baixa_avulsa_peps(
+                                                    id_it,
+                                                    dados_it['qtd'],
+                                                    familia_id=fam['id_familia'],
+                                                    familia_nome=fam['nome'],
+                                                )
                                                 if suc:
                                                     itens_entregues.append(f"{dados_it['qtd']}x {dados_it['nome']}")
                                                 else:
