@@ -436,10 +436,16 @@ def carregar_entregas_neon():
         if engine is None:
             return None
 
-        query = "SELECT id_entrega, nome_familia, data, tipo FROM entregas ORDER BY id_entrega DESC;"
+        query = "SELECT id_entrega, id_familia, nome_familia, data, tipo FROM entregas ORDER BY id_entrega DESC;"
         df = pd.read_sql_query(query, engine)
+        if 'id_familia' not in df.columns:
+            df['id_familia'] = None
+        if 'nome_familia' not in df.columns:
+            df['nome_familia'] = None
+        if 'tipo' not in df.columns:
+            df['tipo'] = None
         if 'data' in df.columns:
-            df['data'] = pd.to_datetime(df['data']).dt.date
+            df['data'] = pd.to_datetime(df['data'], errors='coerce').dt.date
         return df
     except Exception as e:
         logging.warning(f"Não foi possível carregar entregas do Neon: {e}")
