@@ -274,6 +274,22 @@ def salvar_lote_neon(dados_lote):
         return False
 
 
+def sincronizar_lotes_neon():
+    """Sincroniza o estado atual do estoque para a tabela lotes no Neon."""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return False
+
+        df = st.session_state.db_lotes.copy()
+        df = df.where(pd.notna(df), None)
+        df.to_sql('lotes', engine, if_exists='replace', index=False)
+        return True
+    except Exception as e:
+        logging.warning(f"Não foi possível sincronizar lotes no Neon: {e}")
+        return False
+
+
 def salvar_parceiro_neon(dados_parceiro):
     """Salva dados de parceiros no Neon"""
     try:
@@ -1310,6 +1326,9 @@ def alocar_cesta_peps(id_familia):
             qtd_a_retirar = min(lote['quantidade'], qtd_pendente)
             st.session_state.db_lotes.at[idx, 'quantidade'] -= qtd_a_retirar
             qtd_pendente -= qtd_a_retirar
+
+    if not sincronizar_lotes_neon():
+        return False, "Não foi possível atualizar o estoque no banco. Tente novamente."
             
     nova_entrega = {
         'id_entrega': len(st.session_state.db_entregas)+1,
@@ -1327,17 +1346,46 @@ def alocar_cesta_peps(id_familia):
     refresh_estoque_neon(force=True)
     return True, f"Cesta entregue para {nome_familia}. Família removida da fila de espera!"
 
+def obter_lotes_disponiveis_por_validade(id_item):
+    lotes = st.session_state.db_lotes[
+        (st.session_state.db_lotes['id_item'] == id_item) &
+        (st.session_state.db_lotes['quantidade'] > 0)
+    ].copy()
+    if lotes.empty:
+        return lotes
+    lotes['vencimento'] = pd.to_datetime(lotes['vencimento'], errors='coerce')
+    return lotes.sort_values(by=['vencimento', 'id_lote'], ascending=[True, True])
+
+
+def obter_df_estoque_para_entrega():
+    df_estoque = pd.merge(
+        st.session_state.db_lotes[st.session_state.db_lotes['quantidade'] > 0],
+        st.session_state.db_catalogo,
+        on='id_item'
+    )
+    if df_estoque.empty:
+        return pd.DataFrame(columns=['id_item', 'nome', 'qtd_por_cesta', 'qtd_total'])
+    df_estoque = df_estoque.groupby(['id_item', 'nome', 'qtd_por_cesta']).agg({'quantidade': 'sum'}).reset_index()
+    df_estoque.columns = ['id_item', 'nome', 'qtd_por_cesta', 'qtd_total']
+    return df_estoque.sort_values(by='nome', ascending=True).reset_index(drop=True)
+
+
 def dar_baixa_avulsa_peps(id_item, qtd_desejada):
-    lotes = st.session_state.db_lotes[(st.session_state.db_lotes['id_item'] == id_item) & (st.session_state.db_lotes['quantidade'] > 0)].sort_values(by='vencimento')
+    lotes = obter_lotes_disponiveis_por_validade(id_item)
     total_disponivel = lotes['quantidade'].sum()
     if total_disponivel < qtd_desejada:
         return False, f"Estoque insuficiente! Temos apenas {total_disponivel} unidades."
     qtd_pendente = qtd_desejada
     for idx, lote in lotes.iterrows():
-        if qtd_pendente <= 0: break
+        if qtd_pendente <= 0:
+            break
         qtd_a_retirar = min(lote['quantidade'], qtd_pendente)
         st.session_state.db_lotes.at[idx, 'quantidade'] -= qtd_a_retirar
         qtd_pendente -= qtd_a_retirar
+
+    if not sincronizar_lotes_neon():
+        return False, "Não foi possível atualizar o estoque no banco. Tente novamente."
+
     return True, "Baixa registrada no estoque real."
 
 
@@ -1880,12 +1928,7 @@ def main_app():
                         st.markdown("**Se esqueceu algum item? Use a aba de Itens Avulsos para registrar extras.**")
 
                         # --- Calcula estoque disponível ---
-                        df_estoque = pd.merge(
-                            st.session_state.db_lotes[st.session_state.db_lotes['quantidade'] > 0],
-                            st.session_state.db_catalogo,
-                            on='id_item'
-                        ).groupby(['id_item', 'nome', 'qtd_por_cesta']).agg({'quantidade': 'sum'}).reset_index()
-                        df_estoque.columns = ['id_item', 'nome', 'qtd_por_cesta', 'qtd_total']
+                        df_estoque = obter_df_estoque_para_entrega()
 
                         cestas_disp = calcular_cestas_possiveis()
 
@@ -2584,7 +2627,8 @@ def main_app():
 # ==========================================
 # 7. EXECUÇÃO
 # ==========================================
-if not st.session_state.authenticated:
-    login_page()
-else:
-    main_app()
+if __name__ == "__main__":
+    if not st.session_state.authenticated:
+        login_page()
+    else:
+        main_app()
