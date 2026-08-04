@@ -274,6 +274,80 @@ def salvar_lote_neon(dados_lote):
         return False
 
 
+def sincronizar_lotes_neon():
+    """Sincroniza o estado atual do estoque para a tabela lotes no Neon."""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return False
+
+        df = st.session_state.db_lotes.copy()
+        df = df.where(pd.notna(df), None)
+        df.to_sql('lotes', engine, if_exists='replace', index=False)
+        return True
+    except Exception as e:
+        logging.warning(f"Não foi possível sincronizar lotes no Neon: {e}")
+        return False
+
+
+def garantir_tabela_baixas_estoque(engine):
+    """Cria a tabela de baixas de estoque caso ela ainda não exista."""
+    try:
+        with engine.connect() as conn:
+            from sqlalchemy import text
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS baixas_estoque (
+                    id_baixa SERIAL PRIMARY KEY,
+                    id_item INTEGER,
+                    id_lote INTEGER,
+                    nome_item VARCHAR(255),
+                    quantidade INTEGER,
+                    vencimento DATE,
+                    tipo_movimentacao VARCHAR(100),
+                    usuario_nome VARCHAR(255),
+                    usuario_login VARCHAR(100),
+                    familia_id INTEGER,
+                    familia_nome VARCHAR(255),
+                    data_baixa TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """))
+            conn.commit()
+        return True
+    except Exception as e:
+        logging.warning(f"Não foi possível garantir a tabela baixas_estoque: {e}")
+        return False
+
+
+def registrar_baixa_estoque(id_item, qtd_baixada, id_lote, nome_item, vencimento, tipo_movimentacao="Entrega", usuario_nome=None, usuario_login=None, familia_id=None, familia_nome=None):
+    """Registra uma baixa de estoque na tabela de movimentações."""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return False
+
+        garantir_tabela_baixas_estoque(engine)
+
+        dados_baixa = {
+            'id_item': id_item,
+            'id_lote': id_lote,
+            'nome_item': nome_item,
+            'quantidade': int(qtd_baixada),
+            'vencimento': vencimento,
+            'tipo_movimentacao': tipo_movimentacao,
+            'usuario_nome': usuario_nome,
+            'usuario_login': usuario_login,
+            'familia_id': familia_id,
+            'familia_nome': familia_nome,
+            'data_baixa': datetime.datetime.now(),
+        }
+        df = pd.DataFrame([dados_baixa])
+        df.to_sql('baixas_estoque', engine, if_exists='append', index=False)
+        return True
+    except Exception as e:
+        logging.warning(f"Não foi possível registrar baixa no banco: {e}")
+        return False
+
+
 def salvar_parceiro_neon(dados_parceiro):
     """Salva dados de parceiros no Neon"""
     try:
@@ -402,6 +476,29 @@ def carregar_voluntarios_neon():
         return None
 
 
+def carregar_baixas_estoque_neon():
+    """Carrega o histórico de baixas de estoque a partir do Neon."""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return pd.DataFrame(columns=['id_baixa', 'nome_item', 'quantidade', 'familia_nome', 'usuario_login', 'data_baixa'])
+
+        query = """
+            SELECT id_baixa, nome_item, quantidade, familia_nome, usuario_login, data_baixa
+            FROM baixas_estoque
+            ORDER BY data_baixa DESC;
+        """
+        df = pd.read_sql_query(query, engine)
+        if df.empty:
+            return df
+        if 'data_baixa' in df.columns:
+            df['data_baixa'] = pd.to_datetime(df['data_baixa'], errors='coerce')
+        return df
+    except Exception as e:
+        logging.warning(f"Não foi possível carregar baixas do Neon: {e}")
+        return pd.DataFrame(columns=['id_baixa', 'nome_item', 'quantidade', 'familia_nome', 'usuario_login', 'data_baixa'])
+
+
 def refresh_estoque_neon(force=False):
     """Atualiza o estoque local a partir dos dados do Neon."""
     now = datetime.datetime.now()
@@ -454,6 +551,7 @@ def inicializar_neon():
             "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS abas_acesso TEXT;",
             "CREATE TABLE IF NOT EXISTS catalogo (id_item SERIAL PRIMARY KEY, nome VARCHAR(255) NOT NULL, qtd_por_cesta INTEGER DEFAULT 1, categoria VARCHAR(100), ativo BOOLEAN DEFAULT TRUE, data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
             "CREATE TABLE IF NOT EXISTS lotes (id_lote SERIAL PRIMARY KEY, id_item INTEGER, nome_item VARCHAR(255), quantidade INTEGER, vencimento DATE, local_armazenagem VARCHAR(255), data_entrada TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ativo BOOLEAN DEFAULT TRUE, FOREIGN KEY (id_item) REFERENCES catalogo(id_item));",
+            "CREATE TABLE IF NOT EXISTS baixas_estoque (id_baixa SERIAL PRIMARY KEY, id_item INTEGER, id_lote INTEGER, nome_item VARCHAR(255), quantidade INTEGER, vencimento DATE, tipo_movimentacao VARCHAR(100), usuario_nome VARCHAR(255), usuario_login VARCHAR(100), familia_id INTEGER, familia_nome VARCHAR(255), data_baixa TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
             "CREATE TABLE IF NOT EXISTS parceiros (id_parceiro SERIAL PRIMARY KEY, tipo_pessoa VARCHAR(50), nome VARCHAR(255) NOT NULL, documento VARCHAR(50), telefone VARCHAR(20), email VARCHAR(255), cep VARCHAR(10), endereco TEXT, contato_preferencial VARCHAR(20), alerta_mensal BOOLEAN DEFAULT FALSE, alerta_anual BOOLEAN DEFAULT FALSE, ultimo_agradecimento_mensal TIMESTAMP, ultimo_agradecimento_anual TIMESTAMP, itens_ajuda TEXT, data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ativo BOOLEAN DEFAULT TRUE);",
             "CREATE INDEX IF NOT EXISTS idx_familias_nome ON familias(nome);",
             "CREATE INDEX IF NOT EXISTS idx_parceiros_nome ON parceiros(nome);",
@@ -1310,6 +1408,9 @@ def alocar_cesta_peps(id_familia):
             qtd_a_retirar = min(lote['quantidade'], qtd_pendente)
             st.session_state.db_lotes.at[idx, 'quantidade'] -= qtd_a_retirar
             qtd_pendente -= qtd_a_retirar
+
+    if not sincronizar_lotes_neon():
+        return False, "Não foi possível atualizar o estoque no banco. Tente novamente."
             
     nova_entrega = {
         'id_entrega': len(st.session_state.db_entregas)+1,
@@ -1327,17 +1428,59 @@ def alocar_cesta_peps(id_familia):
     refresh_estoque_neon(force=True)
     return True, f"Cesta entregue para {nome_familia}. Família removida da fila de espera!"
 
-def dar_baixa_avulsa_peps(id_item, qtd_desejada):
-    lotes = st.session_state.db_lotes[(st.session_state.db_lotes['id_item'] == id_item) & (st.session_state.db_lotes['quantidade'] > 0)].sort_values(by='vencimento')
+def obter_lotes_disponiveis_por_validade(id_item):
+    lotes = st.session_state.db_lotes[
+        (st.session_state.db_lotes['id_item'] == id_item) &
+        (st.session_state.db_lotes['quantidade'] > 0)
+    ].copy()
+    if lotes.empty:
+        return lotes
+    lotes['vencimento'] = pd.to_datetime(lotes['vencimento'], errors='coerce')
+    return lotes.sort_values(by=['vencimento', 'id_lote'], ascending=[True, True])
+
+
+def obter_df_estoque_para_entrega():
+    df_estoque = pd.merge(
+        st.session_state.db_lotes[st.session_state.db_lotes['quantidade'] > 0],
+        st.session_state.db_catalogo,
+        on='id_item'
+    )
+    if df_estoque.empty:
+        return pd.DataFrame(columns=['id_item', 'nome', 'qtd_por_cesta', 'qtd_total'])
+    df_estoque = df_estoque.groupby(['id_item', 'nome', 'qtd_por_cesta']).agg({'quantidade': 'sum'}).reset_index()
+    df_estoque.columns = ['id_item', 'nome', 'qtd_por_cesta', 'qtd_total']
+    return df_estoque.sort_values(by='nome', ascending=True).reset_index(drop=True)
+
+
+def dar_baixa_avulsa_peps(id_item, qtd_desejada, familia_id=None, familia_nome=None):
+    lotes = obter_lotes_disponiveis_por_validade(id_item)
     total_disponivel = lotes['quantidade'].sum()
     if total_disponivel < qtd_desejada:
         return False, f"Estoque insuficiente! Temos apenas {total_disponivel} unidades."
+
+    usuario_nome = st.session_state.get('current_user') or None
+    usuario_login = st.session_state.get('user_login') or None
     qtd_pendente = qtd_desejada
     for idx, lote in lotes.iterrows():
-        if qtd_pendente <= 0: break
+        if qtd_pendente <= 0:
+            break
         qtd_a_retirar = min(lote['quantidade'], qtd_pendente)
         st.session_state.db_lotes.at[idx, 'quantidade'] -= qtd_a_retirar
+        registrar_baixa_estoque(
+            id_item=int(id_item),
+            qtd_baixada=int(qtd_a_retirar),
+            id_lote=int(lote['id_lote']),
+            nome_item=str(lote.get('nome_item') or ''),
+            vencimento=str(lote.get('vencimento') or ''),
+            tipo_movimentacao='Entrega',
+            usuario_nome=usuario_nome,
+            usuario_login=usuario_login,
+            familia_id=familia_id,
+            familia_nome=familia_nome,
+        )
         qtd_pendente -= qtd_a_retirar
+
+    sincronizar_lotes_neon()
     return True, "Baixa registrada no estoque real."
 
 
@@ -1707,6 +1850,23 @@ def main_app():
         else:
             st.info("A despensa está vazia.")
 
+        st.markdown("---")
+        st.markdown("<div class='title-modern'>Histórico de Baixas</div>", unsafe_allow_html=True)
+        df_baixas = carregar_baixas_estoque_neon()
+        if not df_baixas.empty:
+            df_baixas = df_baixas.copy()
+            df_baixas['data_baixa'] = pd.to_datetime(df_baixas['data_baixa'], errors='coerce').dt.strftime('%d/%m/%Y %H:%M')
+            df_baixas = df_baixas.rename(columns={
+                'nome_item': 'Item',
+                'quantidade': 'Quantidade',
+                'familia_nome': 'Família',
+                'usuario_login': 'Usuário',
+                'data_baixa': 'Data/Hora',
+            })
+            st.dataframe(df_baixas[['Item', 'Quantidade', 'Família', 'Usuário', 'Data/Hora']], use_container_width=True, hide_index=True)
+        else:
+            st.info("Nenhuma baixa registrada até o momento.")
+
     elif menu_opcao == "Famílias":
         c1, c2 = st.columns([3, 1])
         c1.markdown("<div class='title-modern'>Fila de Espera</div>", unsafe_allow_html=True)
@@ -1815,6 +1975,19 @@ def main_app():
                 data_cadastro_text = ''
                 if pd.notnull(fam.get('data_cadastro')):
                     data_cadastro_text = pd.to_datetime(fam['data_cadastro']).strftime('%d/%m/%Y')
+                entregas_fam = st.session_state.db_entregas[st.session_state.db_entregas['id_familia'] == fam['id_familia']]
+                historico_texto = ''
+                itens_ultima_texto = ''
+                if not entregas_fam.empty:
+                    ultima = entregas_fam.sort_values(by='data', ascending=False).iloc[0]
+                    data_ult = pd.to_datetime(ultima['data']).strftime('%d/%m/%Y')
+                    historico_texto = f"Última entrega: {data_ult} — {ultima['tipo']}"
+                    if ultima['tipo'] == 'Cesta Padrão':
+                        itens_cesta = st.session_state.db_catalogo[st.session_state.db_catalogo['qtd_por_cesta'] > 0][['nome', 'qtd_por_cesta']]
+                        itens_ultima_texto = 'Itens: ' + ', '.join([f"{row['qtd_por_cesta']}x {row['nome']}" for _, row in itens_cesta.iterrows()])
+                    else:
+                        itens_ultima_texto = 'Itens: ' + str(ultima['tipo']).replace('Avulso: ', '')
+
                 st.markdown(f"""
                     <div class="bento-card">
                         <div style="display: flex; justify-content: space-between; align-items: flex-start;">
@@ -1828,6 +2001,8 @@ def main_app():
                                 </div>
                                 <div style="font-size: 12px; margin-top: 5px; color: #94a3b8;">{status_mapa}</div>
                                 <div style="font-size: 12px; color: #94a3b8;">{('Cadastro: ' + data_cadastro_text) if data_cadastro_text else ''}</div>
+                                {f'<div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">{historico_texto}</div>' if historico_texto else ''}
+                                {f'<div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">{itens_ultima_texto}</div>' if itens_ultima_texto else ''}
                             </div>
                             {tag_prio}
                         </div>
@@ -1850,17 +2025,22 @@ def main_app():
                         st.markdown(f"""
                             <div style="background: #111827; border: 2px solid var(--primary); border-radius: 12px; padding: 20px; margin: 8px 0;">
                                 <h4 style="color: #bfdbfe; margin: 0 0 4px 0;">📦 Painel de Entrega — {fam['nome']}</h4>
-                                <p style="color: #93c5fd; font-size: 13px; margin: 0;">Escolha o tipo de entrega abaixo</p>
+                                <p style="color: #93c5fd; font-size: 13px; margin: 0;">Escolha o tipo de entrega abaixo e, se necessário, adicione itens esquecidos.</p>
                             </div>
                         """, unsafe_allow_html=True)
 
+                        entregas_fam = st.session_state.db_entregas[st.session_state.db_entregas['id_familia'] == fam['id_familia']]
+                        if not entregas_fam.empty:
+                            st.markdown("**Itens já cadastrados / histórico recente:**")
+                            entregas_recentes = entregas_fam.sort_values(by='data', ascending=False).head(3)
+                            for _, ent in entregas_recentes.iterrows():
+                                data_ent = pd.to_datetime(ent['data']).strftime('%d/%m/%Y')
+                                st.markdown(f"- {data_ent}: {ent['tipo']}")
+
+                        st.markdown("**Se esqueceu algum item? Use a aba de Itens Avulsos para registrar extras.**")
+
                         # --- Calcula estoque disponível ---
-                        df_estoque = pd.merge(
-                            st.session_state.db_lotes[st.session_state.db_lotes['quantidade'] > 0],
-                            st.session_state.db_catalogo,
-                            on='id_item'
-                        ).groupby(['id_item', 'nome', 'qtd_por_cesta']).agg({'quantidade': 'sum'}).reset_index()
-                        df_estoque.columns = ['id_item', 'nome', 'qtd_por_cesta', 'qtd_total']
+                        df_estoque = obter_df_estoque_para_entrega()
 
                         cestas_disp = calcular_cestas_possiveis()
 
@@ -1932,7 +2112,12 @@ def main_app():
                                             erros = []
                                             itens_entregues = []
                                             for id_it, dados_it in selecoes_avulsas.items():
-                                                suc, msg = dar_baixa_avulsa_peps(id_it, dados_it['qtd'])
+                                                suc, msg = dar_baixa_avulsa_peps(
+                                                    id_it,
+                                                    dados_it['qtd'],
+                                                    familia_id=fam['id_familia'],
+                                                    familia_nome=fam['nome'],
+                                                )
                                                 if suc:
                                                     itens_entregues.append(f"{dados_it['qtd']}x {dados_it['nome']}")
                                                 else:
@@ -2559,7 +2744,8 @@ def main_app():
 # ==========================================
 # 7. EXECUÇÃO
 # ==========================================
-if not st.session_state.authenticated:
-    login_page()
-else:
-    main_app()
+if __name__ == "__main__":
+    if not st.session_state.authenticated:
+        login_page()
+    else:
+        main_app()
