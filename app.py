@@ -1999,23 +1999,21 @@ def main_app():
                         itens_ultima_texto = 'Itens: ' + str(ultima['tipo']).replace('Avulso: ', '')
 
                 st.markdown(f"""
-                    <div class="bento-card">
-                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                            <div>
-                                <div class="title-modern" style="font-size: 18px;">{fam['nome']}</div>
-                                <div class="subtitle-modern">
-                                    👥 {fam['dependentes']} Dep. | {fam['endereco']}
-                                </div>
-                                <div class="subtitle-modern" style="margin-top: 8px; font-size: 13px; color: #cbd5e1;">
-                                    ☎️ {fam.get('telefone','-')} | Atendimento: {fam.get('atendimento_tipo','-')}
-                                </div>
-                                <div style="font-size: 12px; margin-top: 5px; color: #94a3b8;">{status_mapa}</div>
-                                <div style="font-size: 12px; color: #94a3b8;">{('Cadastro: ' + data_cadastro_text) if data_cadastro_text else ''}</div>
-                                {f'<div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">{historico_texto}</div>' if historico_texto else ''}
-                                {f'<div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">{itens_ultima_texto}</div>' if itens_ultima_texto else ''}
+                    <div class="bento-card" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
+                        <div style="flex: 1;">
+                            <div class="title-modern" style="font-size: 18px;">{fam['nome']}</div>
+                            <div class="subtitle-modern">
+                                👥 {fam['dependentes']} Dep. | {fam['endereco']}
                             </div>
-                            {tag_prio}
+                            <div class="subtitle-modern" style="margin-top: 8px; font-size: 13px; color: #cbd5e1;">
+                                ☎️ {fam.get('telefone','-')} | Atendimento: {fam.get('atendimento_tipo','-')}
+                            </div>
+                            <div style="font-size: 12px; margin-top: 5px; color: #94a3b8;">{status_mapa}</div>
+                            <div style="font-size: 12px; color: #94a3b8;">{('Cadastro: ' + data_cadastro_text) if data_cadastro_text else ''}</div>
+                            {f'<div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">{historico_texto}</div>' if historico_texto else ''}
+                            {f'<div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">{itens_ultima_texto}</div>' if itens_ultima_texto else ''}
                         </div>
+                        <div>{tag_prio}</div>
                     </div>
                 """, unsafe_allow_html=True)
                 
