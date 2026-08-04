@@ -290,6 +290,30 @@ def sincronizar_lotes_neon():
         return False
 
 
+def registrar_baixa_estoque(id_item, qtd_baixada, id_lote, nome_item, vencimento, tipo_movimentacao="Entrega"):
+    """Registra uma baixa de estoque na tabela de movimentações."""
+    try:
+        engine = get_engine()
+        if engine is None:
+            return False
+
+        dados_baixa = {
+            'id_item': id_item,
+            'id_lote': id_lote,
+            'nome_item': nome_item,
+            'quantidade': int(qtd_baixada),
+            'vencimento': vencimento,
+            'tipo_movimentacao': tipo_movimentacao,
+            'data_baixa': datetime.datetime.now(),
+        }
+        df = pd.DataFrame([dados_baixa])
+        df.to_sql('baixas_estoque', engine, if_exists='append', index=False)
+        return True
+    except Exception as e:
+        logging.warning(f"Não foi possível registrar baixa no banco: {e}")
+        return False
+
+
 def salvar_parceiro_neon(dados_parceiro):
     """Salva dados de parceiros no Neon"""
     try:
@@ -470,6 +494,7 @@ def inicializar_neon():
             "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS abas_acesso TEXT;",
             "CREATE TABLE IF NOT EXISTS catalogo (id_item SERIAL PRIMARY KEY, nome VARCHAR(255) NOT NULL, qtd_por_cesta INTEGER DEFAULT 1, categoria VARCHAR(100), ativo BOOLEAN DEFAULT TRUE, data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
             "CREATE TABLE IF NOT EXISTS lotes (id_lote SERIAL PRIMARY KEY, id_item INTEGER, nome_item VARCHAR(255), quantidade INTEGER, vencimento DATE, local_armazenagem VARCHAR(255), data_entrada TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ativo BOOLEAN DEFAULT TRUE, FOREIGN KEY (id_item) REFERENCES catalogo(id_item));",
+            "CREATE TABLE IF NOT EXISTS baixas_estoque (id_baixa SERIAL PRIMARY KEY, id_item INTEGER, id_lote INTEGER, nome_item VARCHAR(255), quantidade INTEGER, vencimento DATE, tipo_movimentacao VARCHAR(100), data_baixa TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
             "CREATE TABLE IF NOT EXISTS parceiros (id_parceiro SERIAL PRIMARY KEY, tipo_pessoa VARCHAR(50), nome VARCHAR(255) NOT NULL, documento VARCHAR(50), telefone VARCHAR(20), email VARCHAR(255), cep VARCHAR(10), endereco TEXT, contato_preferencial VARCHAR(20), alerta_mensal BOOLEAN DEFAULT FALSE, alerta_anual BOOLEAN DEFAULT FALSE, ultimo_agradecimento_mensal TIMESTAMP, ultimo_agradecimento_anual TIMESTAMP, itens_ajuda TEXT, data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ativo BOOLEAN DEFAULT TRUE);",
             "CREATE INDEX IF NOT EXISTS idx_familias_nome ON familias(nome);",
             "CREATE INDEX IF NOT EXISTS idx_parceiros_nome ON parceiros(nome);",
@@ -1375,12 +1400,21 @@ def dar_baixa_avulsa_peps(id_item, qtd_desejada):
     total_disponivel = lotes['quantidade'].sum()
     if total_disponivel < qtd_desejada:
         return False, f"Estoque insuficiente! Temos apenas {total_disponivel} unidades."
+
     qtd_pendente = qtd_desejada
     for idx, lote in lotes.iterrows():
         if qtd_pendente <= 0:
             break
         qtd_a_retirar = min(lote['quantidade'], qtd_pendente)
         st.session_state.db_lotes.at[idx, 'quantidade'] -= qtd_a_retirar
+        registrar_baixa_estoque(
+            id_item=int(id_item),
+            qtd_baixada=int(qtd_a_retirar),
+            id_lote=int(lote['id_lote']),
+            nome_item=str(lote.get('nome_item') or ''),
+            vencimento=str(lote.get('vencimento') or ''),
+            tipo_movimentacao='Entrega'
+        )
         qtd_pendente -= qtd_a_retirar
 
     sincronizar_lotes_neon()

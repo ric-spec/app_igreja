@@ -136,3 +136,27 @@ def test_baixa_avulsa_nao_depende_da_sincronizacao(monkeypatch):
     assert ok is True
     assert module.st.session_state.db_lotes.loc[0, "quantidade"] == 3
     assert msg == "Baixa registrada no estoque real."
+
+
+def test_registrar_baixa_estoque_persiste_em_tabela_especifica(monkeypatch):
+    module = load_app_module(monkeypatch)
+    calls = []
+
+    class FakeDataFrame(pd.DataFrame):
+        def to_sql(self, name, con, if_exists='fail', index=False, **kwargs):
+            calls.append((name, if_exists, self.to_dict(orient='records')))
+
+    monkeypatch.setattr(module.pd, "DataFrame", FakeDataFrame)
+    monkeypatch.setattr(module, "get_engine", lambda: object())
+
+    ok = module.registrar_baixa_estoque(
+        id_item=7,
+        qtd_baixada=2,
+        id_lote=1,
+        nome_item="Açúcar",
+        vencimento="2026-09-01",
+        tipo_movimentacao="Entrega"
+    )
+
+    assert ok is True
+    assert calls[0][0] == "baixas_estoque"
