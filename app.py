@@ -1958,7 +1958,9 @@ def main_app():
             """, unsafe_allow_html=True)
 
     elif menu_opcao == "Despensa":
-        refresh_estoque_neon()
+        # Força refresh ao abrir a aba Despensa para garantir que o estado
+        # local reflita imediatamente o que está no banco (útil após inserções externas)
+        refresh_estoque_neon(force=True)
 
         if st.button("🔄 Atualizar Estoque", use_container_width=False):
             refresh_estoque_neon(force=True)
