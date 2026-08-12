@@ -2947,14 +2947,23 @@ def main_app():
                 # 1. Botão para Imprimir (Gera HTML em nova aba)
                 html_code = gerar_html_impressao(df_rep, titulo_doc, subtitulo=f"Posição em: {datetime.date.today().strftime('%d/%m/%Y')}")
                 
-                # Codifica o HTML para download/visualização
+                # Codifica o HTML para download/visualização e fornece fallback
                 import base64
                 b64 = base64.b64encode(html_code.encode()).decode()
                 href = f'<a href="data:text/html;base64,{b64}" target="_blank" style="text-decoration:none;"><button style="width:100%; padding: 10px; background-color: #4F46E5; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold;">🖨️ Abrir Visualização de Impressão</button></a>'
-                
+
                 with c_print:
+                    # Link que tenta abrir a visualização em nova aba (pode falhar em alguns navegadores devido a data URI)
                     st.markdown(href, unsafe_allow_html=True)
-                    st.caption("Clique para abrir uma página pronta para imprimir (Ctrl+P).")
+                    # Fallback: botão para baixar o HTML pronto para abrir localmente
+                    st.download_button(
+                        label="📥 Baixar Visualização (.html)",
+                        data=html_code.encode('utf-8'),
+                        file_name=f"relatorio_{datetime.date.today()}.html",
+                        mime='text/html',
+                        use_container_width=True
+                    )
+                    st.caption("Abra o arquivo baixado em seu navegador e use Ctrl+P para imprimir.")
 
                 # 2. Botão para Excel/CSV
                 with c_csv:
