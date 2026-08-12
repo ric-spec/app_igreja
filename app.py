@@ -312,8 +312,10 @@ def salvar_item_catalogo_neon(dados_item):
                 result = conn.execute(sql, dados_item)
                 new_id = result.scalar()
         except Exception:
-            # Fallback para to_sql
-            df = pd.DataFrame([dados_item])
+            # Fallback para to_sql (remover id_item se fornecido, pois DB gera o id)
+            temp = dados_item.copy()
+            temp.pop('id_item', None)
+            df = pd.DataFrame([temp])
             df.to_sql('catalogo', engine, if_exists='append', index=False)
             try:
                 dfq = pd.read_sql_query("SELECT id_item FROM catalogo WHERE nome = %(nome)s ORDER BY id_item DESC LIMIT 1", engine, params={'nome': nome})
