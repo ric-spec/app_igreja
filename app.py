@@ -2063,6 +2063,11 @@ def main_app():
             df_exibicao['Vence em'] = pd.to_datetime(df_exibicao['vencimento_proximo']).dt.strftime('%d/%m/%Y')
             df_exibicao['Alerta'] = df_exibicao['vence_proximo'].apply(lambda x: '⚠️ Vence em até 30 dias' if x else 'OK')
             df_exibicao.rename(columns={'nome': 'Produto', 'quantidade': 'Qtd Disponível'}, inplace=True)
+            # Ordenar por nome do produto em ordem crescente (A-Z), insensível a maiúsculas
+            try:
+                df_exibicao = df_exibicao.sort_values(by='Produto', key=lambda s: s.str.lower())
+            except Exception:
+                df_exibicao = df_exibicao.sort_values(by='Produto')
             st.dataframe(df_exibicao[['Produto', 'Qtd Disponível', 'Vence em', 'Alerta']], use_container_width=True, hide_index=True)
         else:
             st.info("A despensa está vazia.")
