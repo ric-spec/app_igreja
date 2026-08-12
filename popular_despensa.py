@@ -99,14 +99,19 @@ def popular_catalogo():
     """Popula a tabela de catálogo no Neon"""
     try:
         engine = create_engine(NEON_URL)
+        from sqlalchemy import text
+        # Testa conexão
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+
         df_catalogo = pd.DataFrame(catalogo_data)
-        
-        # Insere dados (append = adiciona, replace = substitui tudo)
-        df_catalogo.to_sql('catalogo', engine, if_exists='append', index=False)
-        
+        # Inserção com logs e em blocos para reduzir chances de timeout
+        df_catalogo.to_sql('catalogo', engine, if_exists='append', index=False, method='multi', chunksize=100)
         print(f"✅ {len(df_catalogo)} itens inseridos na tabela 'catalogo'")
         return True
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"❌ Erro ao inserir catálogo: {e}")
         return False
 
@@ -114,14 +119,24 @@ def popular_lotes():
     """Popula a tabela de lotes/estoque no Neon"""
     try:
         engine = create_engine(NEON_URL)
+        from sqlalchemy import text
+        # Testa conexão
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+
         df_lotes = pd.DataFrame(lotes_data)
-        
-        # Insere dados
-        df_lotes.to_sql('lotes', engine, if_exists='append', index=False)
-        
+        # Garante que a coluna de vencimento esteja em formato datetime
+        if 'vencimento' in df_lotes.columns:
+            df_lotes['vencimento'] = pd.to_datetime(df_lotes['vencimento'])
+
+        # Insere dados em modo batch para reduzir erros
+        df_lotes.to_sql('lotes', engine, if_exists='append', index=False, method='multi', chunksize=100)
+
         print(f"✅ {len(df_lotes)} lotes inseridos na tabela 'lotes'")
         return True
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"❌ Erro ao inserir lotes: {e}")
         return False
 

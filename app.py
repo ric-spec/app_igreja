@@ -1,4 +1,5 @@
 import streamlit as st
+import os
 import pandas as pd
 import datetime
 import hashlib
@@ -24,8 +25,37 @@ def get_engine():
     Conecta ao banco Neon usando a URL armazenada nos Secrets.
     """
     try:
-        conn_url = st.secrets["postgres"]["url"]
+        conn_url = None
+        # Tenta carregar de st.secrets (Streamlit)
+        try:
+            if hasattr(st, "secrets"):
+                postgres = st.secrets.get("postgres", {})
+                conn_url = postgres.get("url")
+        except Exception:
+            conn_url = None
+
+        # Fallback para variáveis de ambiente (útil em dev/CI)
+        if not conn_url:
+            conn_url = os.environ.get("NEON_URL") or os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL")
+
+        if not conn_url:
+            st.error("❌ URL de conexão ao Neon não encontrada em st.secrets nem em variáveis de ambiente.")
+            return None
+
         engine = create_engine(conn_url, pool_pre_ping=True, echo=False)
+        # Testa a conexão
+        try:
+            from sqlalchemy import text
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+        except Exception as e:
+            st.error(f"❌ Erro ao testar conexão com o Neon: {e}")
+            return None
+
+        if hasattr(st, "session_state"):
+            st.session_state.neon_connection_error = None
+            st.session_state.neon_connection_url = conn_url
+
         return engine
     except Exception as e:
         st.error(f"❌ Erro ao conectar ao Neon: {e}")
@@ -237,18 +267,71 @@ def salvar_item_catalogo_neon(dados_item):
         engine = get_engine()
         if engine is None:
             return False
-
         dados_item = dados_item.copy()
         if 'categoria' not in dados_item:
             dados_item['categoria'] = 'Avulso'
         if 'qtd_por_cesta' not in dados_item:
             dados_item['qtd_por_cesta'] = 0
 
-        dados_item.pop('id_item', None)
-        df = pd.DataFrame([dados_item])
-        df.to_sql('catalogo', engine, if_exists='append', index=False)
+        from sqlalchemy import text
+        nome = dados_item.get('nome')
+        # Verifica se já existe item com mesmo nome (case-insensitive)
+        try:
+            query = text("SELECT id_item FROM catalogo WHERE lower(nome) = lower(:nome) LIMIT 1")
+            with engine.connect() as conn:
+                res = conn.execute(query, {'nome': nome}).fetchone()
+                if res:
+                    existing_id = int(res[0])
+                    # Atualiza os campos do item existente
+                    update_pairs = ', '.join([f"{k} = :{k}" for k in dados_item.keys() if k != 'nome'])
+                    if update_pairs:
+                        upd = text(f"UPDATE catalogo SET {update_pairs} WHERE id_item = :id")
+                        params = dados_item.copy()
+                        params['id'] = existing_id
+                        with engine.begin() as conn2:
+                            conn2.execute(upd, params)
+                    # Atualiza session_state
+                    try:
+                        if hasattr(st, 'session_state') and 'db_catalogo' in st.session_state:
+                            mask = st.session_state.db_catalogo['nome'].str.lower() == nome.lower()
+                            if mask.any():
+                                st.session_state.db_catalogo.loc[mask, 'id_item'] = existing_id
+                    except Exception:
+                        pass
+                    st.success("✅ Item do catálogo atualizado (existente)!")
+                    return existing_id
+        except Exception:
+            pass
+
+        # Se não existe, insere e retorna o id
+        try:
+            insert_cols = ', '.join(dados_item.keys())
+            insert_vals = ', '.join([f":{k}" for k in dados_item.keys()])
+            sql = text(f"INSERT INTO catalogo ({insert_cols}) VALUES ({insert_vals}) RETURNING id_item")
+            with engine.begin() as conn:
+                result = conn.execute(sql, dados_item)
+                new_id = result.scalar()
+        except Exception:
+            # Fallback para to_sql
+            df = pd.DataFrame([dados_item])
+            df.to_sql('catalogo', engine, if_exists='append', index=False)
+            try:
+                dfq = pd.read_sql_query("SELECT id_item FROM catalogo WHERE nome = %(nome)s ORDER BY id_item DESC LIMIT 1", engine, params={'nome': nome})
+                new_id = int(dfq.iloc[0]['id_item']) if not dfq.empty else None
+            except Exception:
+                new_id = None
+
+        # Atualiza session_state
+        try:
+            if new_id and hasattr(st, 'session_state') and 'db_catalogo' in st.session_state:
+                mask = st.session_state.db_catalogo['nome'].str.lower() == nome.lower()
+                if mask.any():
+                    st.session_state.db_catalogo.loc[mask, 'id_item'] = new_id
+        except Exception:
+            pass
+
         st.success("✅ Item adicionado ao catálogo de despensa!")
-        return True
+        return new_id or True
     except Exception as e:
         st.warning(f"⚠️ Erro ao salvar item: {e}")
         return False
@@ -259,17 +342,91 @@ def salvar_lote_neon(dados_lote):
         engine = get_engine()
         if engine is None:
             return False
+        dados = dados_lote.copy()
+        if 'nome_item' not in dados:
+            dados['nome_item'] = ''
 
-        dados_lote = dados_lote.copy()
-        if 'nome_item' not in dados_lote:
-            dados_lote['nome_item'] = ''
+        # Garantir id_item válido: se não existir no DB, tenta encontrar por nome ou cria o item
+        from sqlalchemy import text
+        id_item = dados.get('id_item')
+        nome_item = dados.get('nome_item')
+        try:
+            with engine.connect() as conn:
+                if id_item:
+                    r = conn.execute(text("SELECT id_item FROM catalogo WHERE id_item = :id"), {'id': int(id_item)}).fetchone()
+                    if not r:
+                        id_item = None
+                if not id_item and nome_item:
+                    r = conn.execute(text("SELECT id_item FROM catalogo WHERE lower(nome) = lower(:nome) LIMIT 1"), {'nome': nome_item}).fetchone()
+                    if r:
+                        id_item = int(r[0])
+        except Exception:
+            id_item = id_item
 
-        dados_lote.pop('id_lote', None)
-        df = pd.DataFrame([dados_lote])
-        df.to_sql('lotes', engine, if_exists='append', index=False)
+        # Se ainda não temos id_item, cria o item no catálogo (mínimo de dados)
+        if not id_item:
+            novo_item = {'nome': nome_item or 'Item sem nome', 'categoria': 'Extra', 'qtd_por_cesta': 0}
+            res = salvar_item_catalogo_neon(novo_item)
+            if isinstance(res, int):
+                id_item = res
+            elif res is True:
+                # tenta recuperar pelo nome
+                try:
+                    dfq = pd.read_sql_query("SELECT id_item FROM catalogo WHERE nome = %(nome)s ORDER BY id_item DESC LIMIT 1", engine, params={'nome': novo_item['nome']})
+                    id_item = int(dfq.iloc[0]['id_item']) if not dfq.empty else None
+                except Exception:
+                    id_item = None
+
+        if not id_item:
+            st.warning("⚠️ Não foi possível determinar o `id_item` para o lote. Operação abortada.")
+            return False
+
+        dados['id_item'] = int(id_item)
+        # Normaliza vencimento para date
+        if 'vencimento' in dados and pd.notna(dados['vencimento']):
+            try:
+                dados['vencimento'] = pd.to_datetime(dados['vencimento']).date()
+            except Exception:
+                pass
+
+        # Se já existe um lote com mesmo id_item e vencimento, soma a quantidade
+        try:
+            with engine.begin() as conn:
+                q = text("SELECT id_lote, quantidade FROM lotes WHERE id_item = :id_item AND vencimento = :venc LIMIT 1")
+                r = conn.execute(q, {'id_item': dados['id_item'], 'venc': dados.get('vencimento')}).fetchone()
+                if r:
+                    existing_id, existing_qtd = int(r[0]), int(r[1] or 0)
+                    new_qtd = existing_qtd + int(dados.get('quantidade', 0))
+                    upd = text("UPDATE lotes SET quantidade = :qtd, nome_item = :nome WHERE id_lote = :id")
+                    conn.execute(upd, {'qtd': new_qtd, 'nome': dados.get('nome_item', ''), 'id': existing_id})
+                    # Atualiza session_state
+                    try:
+                        if hasattr(st, 'session_state') and 'db_lotes' in st.session_state:
+                            mask = (st.session_state.db_lotes['id_item'] == dados['id_item']) & (pd.to_datetime(st.session_state.db_lotes['vencimento']).dt.date == pd.to_datetime(dados.get('vencimento')).date())
+                            if mask.any():
+                                st.session_state.db_lotes.loc[mask, 'quantidade'] = new_qtd
+                    except Exception:
+                        pass
+                    st.success("✅ Lote atualizado (quantidade somada)!")
+                    return True
+
+                # Senão, insere novo lote
+                insert_cols = ', '.join([k for k in dados.keys() if k != 'id_lote'])
+                insert_vals = ', '.join([f":{k}" for k in dados.keys() if k != 'id_lote'])
+                ins = text(f"INSERT INTO lotes ({insert_cols}) VALUES ({insert_vals})")
+                conn.execute(ins, dados)
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            st.warning(f"⚠️ Erro ao salvar lote: {e}")
+            return False
+
         st.success("✅ Lote de estoque registrado com sucesso!")
         return True
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         st.warning(f"⚠️ Erro ao salvar lote: {e}")
         return False
 

@@ -162,6 +162,54 @@ def test_registrar_baixa_estoque_persiste_em_tabela_especifica(monkeypatch):
     assert calls[0][0] == "baixas_estoque"
 
 
+def test_salvar_item_catalogo_neon_insere_catalogo(monkeypatch):
+    module = load_app_module(monkeypatch)
+    calls = []
+
+    class FakeDataFrame(pd.DataFrame):
+        def to_sql(self, name, con, if_exists='fail', index=False, **kwargs):
+            calls.append((name, if_exists, self.to_dict(orient='records')))
+
+    monkeypatch.setattr(module.pd, "DataFrame", FakeDataFrame)
+    monkeypatch.setattr(module, "get_engine", lambda: object())
+
+    ok = module.salvar_item_catalogo_neon({
+        'id_item': 99,
+        'nome': 'Biscoito',
+        'qtd_por_cesta': 2,
+        'categoria': 'Avulso'
+    })
+
+    assert ok is True
+    assert len(calls) == 1
+    assert calls[0][0] == 'catalogo'
+    assert calls[0][1] == 'append'
+    assert calls[0][2][0]['nome'] == 'Biscoito'
+    assert calls[0][2][0]['qtd_por_cesta'] == 2
+    assert calls[0][2][0]['categoria'] == 'Avulso'
+    assert 'id_item' not in calls[0][2][0]
+
+
+def test_salvar_item_catalogo_neon_define_valores_padrao(monkeypatch):
+    module = load_app_module(monkeypatch)
+    calls = []
+
+    class FakeDataFrame(pd.DataFrame):
+        def to_sql(self, name, con, if_exists='fail', index=False, **kwargs):
+            calls.append((name, if_exists, self.to_dict(orient='records')))
+
+    monkeypatch.setattr(module.pd, "DataFrame", FakeDataFrame)
+    monkeypatch.setattr(module, "get_engine", lambda: object())
+
+    ok = module.salvar_item_catalogo_neon({'nome': 'Doce'})
+
+    assert ok is True
+    assert len(calls) == 1
+    assert calls[0][2][0]['categoria'] == 'Avulso'
+    assert calls[0][2][0]['qtd_por_cesta'] == 0
+    assert 'id_item' not in calls[0][2][0]
+
+
 def test_registrar_baixa_estoque_garante_tabela_antes_de_salvar(monkeypatch):
     module = load_app_module(monkeypatch)
     calls = []
