@@ -1822,25 +1822,25 @@ def gerar_html_impressao(df, titulo, subtitulo=""):
     """
     Gera um HTML limpo e formatado especificamente para impressão ou PDF.
     """
-    # CSS para garantir que saia bonito no papel A4
+    # CSS para impressão em papel branco (fundo branco, texto preto)
     estilo = """
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
-        body { font-family: 'Roboto', sans-serif; color: #e2e8f0; padding: 20px; background: #0f172a; }
-        h1 { text-align: center; text-transform: uppercase; font-size: 18px; margin-bottom: 5px; color: #f8fafc; }
-        h2 { text-align: center; font-size: 14px; font-weight: normal; margin-bottom: 30px; color: #cbd5e1; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }
-        th { background-color: #f3f3f3; border: 1px solid #ccc; padding: 8px; text-align: left; font-weight: bold; }
-        td { border: 1px solid #ccc; padding: 8px; }
-        tr:nth-child(even) { background-color: #f9f9f9; }
-        .footer { margin-top: 40px; font-size: 10px; text-align: right; border-top: 1px solid #ccc; padding-top: 10px; }
+        body { font-family: 'Roboto', sans-serif; color: #000; padding: 20px; background: #ffffff; }
+        h1 { text-align: center; text-transform: uppercase; font-size: 18px; margin-bottom: 5px; color: #000; }
+        h2 { text-align: center; font-size: 14px; font-weight: normal; margin-bottom: 30px; color: #333; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; color: #000; }
+        th { background-color: #f0f0f0; border: 1px solid #ccc; padding: 8px; text-align: left; font-weight: bold; color: #000; }
+        td { border: 1px solid #ccc; padding: 8px; color: #000; background: #fff; }
+        tr:nth-child(even) { background-color: #fafafa; }
+        .footer { margin-top: 40px; font-size: 10px; text-align: right; border-top: 1px solid #ccc; padding-top: 10px; color: #333; }
         .assinatura { margin-top: 50px; display: flex; justify-content: space-between; }
-        .linha-ass { border-top: 1px solid #000; width: 40%; text-align: center; padding-top: 5px; font-size: 12px; }
-        
-        /* Oculta elementos do Streamlit na hora de imprimir se o CSS global vazar */
+        .linha-ass { border-top: 1px solid #000; width: 40%; text-align: center; padding-top: 5px; font-size: 12px; color: #000; }
+
+        /* Impressão: garantir fundo branco e texto preto */
         @media print {
             .stApp, header, footer, .stButton { display: none; }
-            body { visibility: visible; }
+            body { background: #ffffff; color: #000; }
         }
     </style>
     """
