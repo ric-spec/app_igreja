@@ -382,6 +382,15 @@ def salvar_lote_neon(dados_lote):
             return False
 
         dados['id_item'] = int(id_item)
+        # Garantir data_entrada e ativo se ausentes
+        try:
+            if 'data_entrada' not in dados or pd.isna(dados.get('data_entrada')):
+                dados['data_entrada'] = datetime.datetime.now()
+        except Exception:
+            dados['data_entrada'] = datetime.datetime.now()
+        if 'ativo' not in dados:
+            dados['ativo'] = True
+
         # Normaliza vencimento para date
         if 'vencimento' in dados and pd.notna(dados['vencimento']):
             try:
@@ -456,7 +465,18 @@ def sincronizar_lotes_neon():
             return False
 
         df = st.session_state.db_lotes.copy()
+        # Preencher campos obrigatórios que poderiam estar como NaN para evitar
+        # sobrescrever defaults do DB com NULLs.
         df = df.where(pd.notna(df), None)
+        if 'data_entrada' in df.columns:
+            df['data_entrada'] = df['data_entrada'].fillna(datetime.datetime.now())
+        else:
+            df['data_entrada'] = datetime.datetime.now()
+        if 'ativo' in df.columns:
+            df['ativo'] = df['ativo'].fillna(True)
+        else:
+            df['ativo'] = True
+
         df.to_sql('lotes', engine, if_exists='replace', index=False)
         return True
     except Exception as e:
@@ -2007,7 +2027,9 @@ def main_app():
                         'id_item': id_item_escolhido,
                         'nome_item': item_selecionado,
                         'quantidade': qtd,
-                        'vencimento': venc
+                        'vencimento': venc,
+                        'data_entrada': datetime.datetime.now(),
+                        'ativo': True
                     }
                     st.session_state.db_lotes = pd.concat([st.session_state.db_lotes, pd.DataFrame([novo_lote])], ignore_index=True)
                     if salvar_lote_neon(novo_lote):
