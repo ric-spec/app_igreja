@@ -2010,6 +2010,17 @@ def main_app():
                     st.session_state.db_lotes = pd.concat([st.session_state.db_lotes, pd.DataFrame([novo_lote])], ignore_index=True)
                     if salvar_lote_neon(novo_lote):
                         refresh_estoque_neon(force=True)
+                        # Diagnóstico: comparar estado local vs banco para o item/vencimento inserido
+                        try:
+                            engine = get_engine()
+                            if engine is not None:
+                                from sqlalchemy import text
+                                q = text("SELECT id_lote, id_item, nome_item, quantidade, vencimento FROM lotes WHERE id_item = :id_item AND vencimento = :vencimento ORDER BY id_lote DESC")
+                                with engine.connect() as conn:
+                                    rows = conn.execute(q, {'id_item': id_item_escolhido, 'vencimento': pd.to_datetime(venc).date()}).fetchall()
+                                    st.info(f"DB rows for item {item_selecionado} venc={venc}: {len(rows)}")
+                        except Exception:
+                            pass
                     st.success("Registado!")
                     st.rerun()
 
