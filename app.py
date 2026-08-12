@@ -2067,29 +2067,7 @@ def main_app():
         else:
             st.info("A despensa está vazia.")
 
-        # Painel de debug (temporário) para inspecionar estado local vs banco
-        with st.expander("Debug - Estado local e DB", expanded=False):
-            try:
-                db_lotes = st.session_state.db_lotes.copy() if 'db_lotes' in st.session_state else pd.DataFrame()
-                db_cat = st.session_state.db_catalogo.copy() if 'db_catalogo' in st.session_state else pd.DataFrame()
-                st.write(f"Lotes locais: {len(db_lotes)} | Soma quantidade: {int(db_lotes['quantidade'].sum()) if ('quantidade' in db_lotes.columns and not db_lotes.empty) else 0}")
-                st.dataframe(db_lotes.head(50))
-                st.write(f"Catálogo local: {len(db_cat)}")
-                st.dataframe(db_cat.head(50))
-
-                if not db_lotes.empty and not db_cat.empty and 'quantidade' in db_lotes.columns:
-                    try:
-                        df_merge = pd.merge(db_lotes[db_lotes['quantidade'] > 0], db_cat, on='id_item')
-                        df_group = df_merge.groupby(['id_item', 'nome'], as_index=False).agg(
-                            quantidade=('quantidade', 'sum'),
-                            vencimento_proximo=('vencimento', 'min')
-                        )
-                        st.write('Visão mesclada (o que a UI deveria mostrar):')
-                        st.dataframe(df_group)
-                    except Exception as e:
-                        st.write('Erro ao mesclar dados locais:', e)
-            except Exception as e:
-                st.write('Erro no painel de debug:', e)
+        # Painel de debug removido
 
         st.markdown("---")
         st.markdown("<div class='title-modern'>Histórico de Baixas</div>", unsafe_allow_html=True)
