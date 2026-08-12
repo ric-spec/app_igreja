@@ -410,11 +410,28 @@ def salvar_lote_neon(dados_lote):
                     st.success("✅ Lote atualizado (quantidade somada)!")
                     return True
 
-                # Senão, insere novo lote
+                # Senão, insere novo lote e retorna o id gerado
                 insert_cols = ', '.join([k for k in dados.keys() if k != 'id_lote'])
                 insert_vals = ', '.join([f":{k}" for k in dados.keys() if k != 'id_lote'])
-                ins = text(f"INSERT INTO lotes ({insert_cols}) VALUES ({insert_vals})")
-                conn.execute(ins, dados)
+                ins = text(f"INSERT INTO lotes ({insert_cols}) VALUES ({insert_vals}) RETURNING id_lote")
+                result = conn.execute(ins, dados)
+                try:
+                    new_lote_id = int(result.scalar())
+                except Exception:
+                    new_lote_id = None
+                # Atualiza session_state com o id gerado
+                try:
+                    if new_lote_id and hasattr(st, 'session_state') and 'db_lotes' in st.session_state:
+                        mask = (
+                            (st.session_state.db_lotes['id_item'] == dados['id_item']) &
+                            (pd.to_datetime(st.session_state.db_lotes['vencimento']).dt.date == pd.to_datetime(dados.get('vencimento')).date()) &
+                            (st.session_state.db_lotes['quantidade'] == int(dados.get('quantidade', 0))) &
+                            (st.session_state.db_lotes['id_lote'].isnull() | (st.session_state.db_lotes['id_lote'] == 0))
+                        )
+                        if mask.any():
+                            st.session_state.db_lotes.loc[mask, 'id_lote'] = new_lote_id
+                except Exception:
+                    pass
 
         except Exception as e:
             import traceback
