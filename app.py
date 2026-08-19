@@ -524,10 +524,10 @@ def registrar_baixa_estoque(id_item, qtd_baixada, id_lote, nome_item, vencimento
         garantir_tabela_baixas_estoque(engine)
 
         dados_baixa = {
-            'id_item': id_item,
-            'id_lote': id_lote,
+            'id_item': int(pd.to_numeric(id_item, errors='coerce') or 0),
+            'id_lote': int(pd.to_numeric(id_lote, errors='coerce') or 0),
             'nome_item': nome_item,
-            'quantidade': int(qtd_baixada),
+            'quantidade': int(pd.to_numeric(qtd_baixada, errors='coerce') or 0),
             'vencimento': vencimento,
             'tipo_movimentacao': tipo_movimentacao,
             'usuario_nome': usuario_nome,
@@ -1637,6 +1637,9 @@ def obter_lotes_disponiveis_por_validade(id_item):
     ].copy()
     if lotes.empty:
         return lotes
+
+    lotes['id_lote'] = pd.to_numeric(lotes['id_lote'], errors='coerce').fillna(0).astype(int)
+    lotes['quantidade'] = pd.to_numeric(lotes['quantidade'], errors='coerce').fillna(0).astype(int)
     lotes['vencimento'] = pd.to_datetime(lotes['vencimento'], errors='coerce')
     return lotes.sort_values(by=['vencimento', 'id_lote'], ascending=[True, True])
 
@@ -1668,10 +1671,11 @@ def dar_baixa_avulsa_peps(id_item, qtd_desejada, familia_id=None, familia_nome=N
             break
         qtd_a_retirar = min(lote['quantidade'], qtd_pendente)
         st.session_state.db_lotes.at[idx, 'quantidade'] -= qtd_a_retirar
+        id_lote_registro = int(pd.to_numeric(lote.get('id_lote'), errors='coerce') or 0)
         registrar_baixa_estoque(
             id_item=int(id_item),
             qtd_baixada=int(qtd_a_retirar),
-            id_lote=int(lote['id_lote']),
+            id_lote=id_lote_registro,
             nome_item=str(lote.get('nome_item') or ''),
             vencimento=str(lote.get('vencimento') or ''),
             tipo_movimentacao='Entrega',

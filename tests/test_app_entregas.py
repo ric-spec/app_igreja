@@ -104,6 +104,29 @@ def test_baixa_avulsa_persiste_estoque(monkeypatch):
     assert chamado == [True]
 
 
+def test_baixa_avulsa_ignora_id_lote_nan(monkeypatch):
+    module = load_app_module(monkeypatch)
+    module.st.session_state.db_lotes = pd.DataFrame([
+        {"id_lote": float("nan"), "id_item": 7, "nome_item": "Açúcar", "quantidade": 5, "vencimento": "2026-09-01"}
+    ])
+
+    chamada = []
+
+    def fake_registrar(id_item, qtd_baixada, id_lote, nome_item, vencimento, tipo_movimentacao="Entrega", usuario_nome=None, usuario_login=None, familia_id=None, familia_nome=None):
+        chamada.append({"id_item": id_item, "qtd_baixada": qtd_baixada, "id_lote": id_lote})
+        return True
+
+    monkeypatch.setattr(module, "registrar_baixa_estoque", fake_registrar)
+    monkeypatch.setattr(module, "sincronizar_lotes_neon", lambda: True)
+
+    ok, msg = module.dar_baixa_avulsa_peps(7, 3)
+
+    assert ok is True
+    assert msg == "Baixa registrada no estoque real."
+    assert module.st.session_state.db_lotes.loc[0, "quantidade"] == 2
+    assert chamada[0]["id_lote"] == 0
+
+
 def test_estoque_para_entrega_usa_ordem_alfabetica_e_validade(monkeypatch):
     module = load_app_module(monkeypatch)
     module.st.session_state.db_lotes = pd.DataFrame([
